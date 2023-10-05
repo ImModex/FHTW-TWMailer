@@ -13,9 +13,9 @@
 #include "../lib/tw_packet.h"
 
 void TW_SEND(int);
-void TW_LIST(int, char*);
-void TW_READ(int, char*, int);
-void TW_DEL(int, char*, int);
+void TW_LIST(int);
+void TW_READ(int);
+void TW_DEL(int);
 
 int checkUsername(char*);
 
@@ -95,13 +95,11 @@ int main(int argc, char *argv[]) {
         if(strcmp(input, "SEND") == 0) {
             TW_SEND(socketID);
         } else if(strcmp(input, "LIST") == 0) {
-            char* username;
-
-            do {
-                username = readline("Username: ");
-            } while(!checkUsername(username));
-
-            TW_LIST(socketID, username);
+            TW_LIST(socketID);
+        } else if(strcmp(input, "READ") == 0) {
+            TW_READ(socketID);
+        } else if(strcmp(input, "DEL") == 0) {
+            TW_DEL(socketID);
         }
 
         free(input);
@@ -145,17 +143,35 @@ void TW_SEND(int socketID) {
     print_TW_PACKET(&received);
 }
 
-void TW_LIST(int socketID, char* username) {
-    char* data = (char*) malloc((5 + strlen(username)) * sizeof(char) + 1);
-    sprintf(data, "SEND\n%s", username);
+void TW_LIST(int socketID) {
+    char *message = get_input(1);
+    TW_PACKET packet;
 
-    write(socketID, data, strlen(data));
+    packet = make_TW_PACKET(LIST, message);
+    send_TW_PACKET(socketID, &packet);
 
-    char inputBuffer[100];
-    int bytesRead = read(socketID, inputBuffer, 100);
-    if(bytesRead == -1) {
-        printf("Error while reading server reply!\n");
-        exit(1);
-    }
-    printf("%s", inputBuffer);
+    TW_PACKET received = receive_TW_PACKET(socketID);
+    print_TW_PACKET(&received); 
+}
+
+void TW_READ(int socketID) {
+    char *message = get_input(2);
+    TW_PACKET packet;
+
+    packet = make_TW_PACKET(READ, message);
+    send_TW_PACKET(socketID, &packet);
+
+    TW_PACKET received = receive_TW_PACKET(socketID);
+    print_TW_PACKET(&received); 
+}
+
+void TW_DEL(int socketID) {
+    char *message = get_input(2);
+    TW_PACKET packet;
+
+    packet = make_TW_PACKET(DELETE, message);
+    send_TW_PACKET(socketID, &packet);
+
+    TW_PACKET received = receive_TW_PACKET(socketID);
+    print_TW_PACKET(&received); 
 }

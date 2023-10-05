@@ -17,11 +17,22 @@ TW_PACKET receive_TW_PACKET(int sockfd) {
     return packet;
 }
 
+const char* apply_header(PACKET_TYPE type) {
+    switch (type)
+    {
+        case LIST: return "LIST\n";
+        case READ: return "READ\n";
+        case DELETE: return "DEL\n";
+        default: return "";
+    }
+}
+
 TW_PACKET make_TW_PACKET(PACKET_TYPE type, char *message) {
     TW_PACKET packet;
 
     packet.header = type;
-    strcpy(packet.data, message);
+    strcpy(packet.data, apply_header(type));
+    strcat(packet.data, message);
 
     return packet;
 }

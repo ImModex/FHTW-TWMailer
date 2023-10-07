@@ -1,5 +1,43 @@
 #include "tw_packet.h"
 
+TW_PACKET handle_TW_PACKET(int sockfd, PACKET_TYPE type) {
+    TW_PACKET answer;
+    answer.header = INVALID;
+
+    switch (type)
+    {
+        case SEND:
+            answer = TW_PACKET_IO(sockfd, type, -1); break;
+        case LIST:
+            answer = TW_PACKET_IO(sockfd, type, 1, "Username: "); break;
+        case READ:
+            answer = TW_PACKET_IO(sockfd, type, 2, "Username: ", "Index: "); break;
+        case DELETE:
+            answer = TW_PACKET_IO(sockfd, type, 1, "Username: ", "Index: "); break;
+        case LOGIN:
+            answer = TW_PACKET_IO(sockfd, type, 1, "Username: ", "Password: "); break;
+        default: 
+            break;
+    }
+
+    if(answer.header != INVALID) print_TW_PACKET(&answer);
+
+    return answer;
+}
+
+TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
+    va_list prompts;
+    va_start(prompts, lines);
+
+    TW_PACKET packet = (lines == -1) ? make_TW_PACKET(type, lines, NULL) : make_TW_PACKET(type, lines, &prompts);
+    va_end(prompts);
+
+    send_TW_PACKET(sockfd, &packet);
+    TW_PACKET received = receive_TW_PACKET(sockfd);
+
+    return received;
+}
+
 void send_TW_PACKET(int sockfd, TW_PACKET *packet) {
     if(write(sockfd, packet, sizeof(*packet)) != sizeof(*packet)) {
         printf("Could not send message to server!\n");
@@ -27,13 +65,15 @@ const char* apply_header(PACKET_TYPE type) {
     }
 }
 
-TW_PACKET make_TW_PACKET(PACKET_TYPE type, char *message) {
+TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
     TW_PACKET packet;
+    char *message = get_input(lines, prompts);
 
     packet.header = type;
     strcpy(packet.data, apply_header(type));
     strcat(packet.data, message);
 
+    free(message);
     return packet;
 }
 
@@ -41,7 +81,7 @@ void print_TW_PACKET(TW_PACKET *packet) {
     printf("%s\n", packet->data);
 }
 
-char* get_input(int lines) {
+char* get_input(int lines, va_list *prompts) {
     if(lines == 0) return NULL;
 
     int lines_read = 0;
@@ -49,6 +89,7 @@ char* get_input(int lines) {
     memset(message, 0, sizeof(char));
 
     do {
+        if(prompts != NULL) printf("%s", va_arg(*prompts, char*));
         buf = readline("");
 
         if(strcmp(buf, ".") == 0) break;

@@ -91,15 +91,15 @@ int main(int argc, char *argv[]) {
     printf("Successfully connected to server. Please enter a command.\n");
     while(1) {
         char* input = readline("Please enter a command: ");
+        PACKET_TYPE type = str2type(input);
 
-        if(strcmp(input, "SEND") == 0) {
-            TW_SEND(socketID);
-        } else if(strcmp(input, "LIST") == 0) {
-            TW_LIST(socketID);
-        } else if(strcmp(input, "READ") == 0) {
-            TW_READ(socketID);
-        } else if(strcmp(input, "DEL") == 0) {
-            TW_DEL(socketID);
+        switch(type) {
+            case SEND: TW_SEND(socketID); break;
+            case LIST: TW_LIST(socketID); break;
+            case READ: TW_READ(socketID); break;
+            case DELETE: TW_DEL(socketID); break;
+            case LOGIN: break; // TODO
+            default: break;
         }
 
         free(input);

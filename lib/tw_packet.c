@@ -65,3 +65,23 @@ char* get_input(int lines) {
 
     return message;
 }
+
+PACKET_TYPE str2type(char* str) {
+    if(strcmp(str, "SEND") == 0) {
+        return SEND;
+    } else if(strcmp(str, "LIST") == 0) {
+        return LIST;
+    } else if(strcmp(str, "READ") == 0) {
+        return READ;
+    } else if(strcmp(str, "DEL") == 0) {
+        return DELETE;
+    } else if(strcmp(str, "LOGIN") == 0) {
+        return LOGIN;
+    } else if(strcmp(str, "OK") == 0) {
+        return SERVER_OK;
+    } else if(strcmp(str, "ERR") == 0) {
+        return SERVER_ERR;
+    }
+
+    return INVALID;
+}

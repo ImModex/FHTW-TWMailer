@@ -19,7 +19,8 @@ typedef enum PACKET_TYPE {
     READ,
     DELETE,
     SERVER_OK,
-    SERVER_ERR
+    SERVER_ERR,
+    INVALID
 } PACKET_TYPE;
 
 typedef struct TW_PACKET {
@@ -32,3 +33,4 @@ TW_PACKET receive_TW_PACKET(int sockfd);
 TW_PACKET make_TW_PACKET(PACKET_TYPE type, char *message);
 void print_TW_PACKET(TW_PACKET *packet);
 char* get_input(int lines);
+PACKET_TYPE str2type(char* str);

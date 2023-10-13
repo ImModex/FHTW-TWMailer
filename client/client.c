@@ -95,15 +95,15 @@ int main(int argc, char *argv[]) {
         switch (type)
         {
             case SEND:
-                answer = TW_PACKET_IO(socketID, type, -1); break;
+                answer = TW_PACKET_IO(socketID, type, -1, "Sender: ", "Receiver: ", "Subject: ", "Message:\n", NULL); break;
             case LIST:
                 answer = TW_PACKET_IO(socketID, type, 1, "Username: "); break;
             case READ:
                 answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Index: "); break;
             case DELETE:
-                answer = TW_PACKET_IO(socketID, type, 1, "Username: ", "Index: "); break;
+                answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Index: "); break;
             case LOGIN:
-                answer = TW_PACKET_IO(socketID, type, 1, "Username: ", "Password: "); break;
+                answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Password: "); break;
             default: 
                 break;
         }

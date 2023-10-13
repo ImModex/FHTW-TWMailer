@@ -30,7 +30,7 @@ TW_PACKET receive_TW_PACKET(int sockfd) {
     return packet;
 }
 
-const char* apply_header(PACKET_TYPE type) {
+const char* type2str(PACKET_TYPE type) {
     switch (type)
     {
         case SERVER_OK: return "OK\n";
@@ -43,15 +43,23 @@ const char* apply_header(PACKET_TYPE type) {
     }
 }
 
-TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type) {
-    return make_TW_PACKET(type, 0, NULL);
+TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type, char* payload) {
+    if(payload == NULL) return make_TW_PACKET(type, 0, NULL);
+
+    TW_PACKET packet;
+
+    packet.header = type;
+    strcpy(packet.data, type2str(type));
+    strcat(packet.data, payload);
+
+    return packet;
 }
 
 TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
     TW_PACKET packet;
 
     packet.header = type;
-    strcpy(packet.data, apply_header(type));
+    strcpy(packet.data, type2str(type));
 
     if(type != SERVER_OK && type != SERVER_ERR) {
         char *message = get_input(lines, prompts);

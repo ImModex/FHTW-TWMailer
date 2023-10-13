@@ -88,7 +88,9 @@ int main(int argc, char *argv[]) {
         char* input = readline("Please enter a command: ");
         
         PACKET_TYPE type = str2type(input);    
-        handle_TW_PACKET(socketID, type);
+        TW_PACKET answer = handle_TW_PACKET(socketID, type);
+
+        print_TW_PACKET(&answer);
 
         free(input);
     }

@@ -1,30 +1,5 @@
 #include "tw_packet.h"
 
-TW_PACKET handle_TW_PACKET(int sockfd, PACKET_TYPE type) {
-    TW_PACKET answer;
-    answer.header = INVALID;
-
-    switch (type)
-    {
-        case SEND:
-            answer = TW_PACKET_IO(sockfd, type, -1); break;
-        case LIST:
-            answer = TW_PACKET_IO(sockfd, type, 1, "Username: "); break;
-        case READ:
-            answer = TW_PACKET_IO(sockfd, type, 2, "Username: ", "Index: "); break;
-        case DELETE:
-            answer = TW_PACKET_IO(sockfd, type, 1, "Username: ", "Index: "); break;
-        case LOGIN:
-            answer = TW_PACKET_IO(sockfd, type, 1, "Username: ", "Password: "); break;
-        default: 
-            break;
-    }
-
-    if(answer.header != INVALID) print_TW_PACKET(&answer);
-
-    return answer;
-}
-
 TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
     va_list prompts;
     va_start(prompts, lines);

@@ -87,8 +87,28 @@ int main(int argc, char *argv[]) {
     while(1) {
         char* input = readline("Please enter a command: ");
         
-        PACKET_TYPE type = str2type(input);    
-        handle_TW_PACKET(socketID, type);
+        PACKET_TYPE type = str2type(input);
+
+        TW_PACKET answer;
+        answer.header = INVALID;
+
+        switch (type)
+        {
+            case SEND:
+                answer = TW_PACKET_IO(socketID, type, -1); break;
+            case LIST:
+                answer = TW_PACKET_IO(socketID, type, 1, "Username: "); break;
+            case READ:
+                answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Index: "); break;
+            case DELETE:
+                answer = TW_PACKET_IO(socketID, type, 1, "Username: ", "Index: "); break;
+            case LOGIN:
+                answer = TW_PACKET_IO(socketID, type, 1, "Username: ", "Password: "); break;
+            default: 
+                break;
+        }
+
+        if(answer.header != INVALID) print_TW_PACKET(&answer);
 
         free(input);
     }

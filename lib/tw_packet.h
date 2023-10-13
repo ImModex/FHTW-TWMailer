@@ -30,7 +30,6 @@ typedef struct TW_PACKET {
     char data[MAX_MESSAGE_SIZE];
 } TW_PACKET;
 
-TW_PACKET handle_TW_PACKET(int sockfd, PACKET_TYPE type);
 TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...);
 void send_TW_PACKET(int sockfd, TW_PACKET *packet);
 TW_PACKET receive_TW_PACKET(int sockfd);

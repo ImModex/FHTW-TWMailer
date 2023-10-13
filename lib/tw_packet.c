@@ -4,7 +4,7 @@ TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
     va_list prompts;
     va_start(prompts, lines);
 
-    TW_PACKET packet = (lines == -1) ? make_TW_PACKET(type, lines, NULL) : make_TW_PACKET(type, lines, &prompts);
+    TW_PACKET packet = make_TW_PACKET(type, lines, &prompts);
     va_end(prompts);
 
     send_TW_PACKET(sockfd, &packet);
@@ -33,38 +33,58 @@ TW_PACKET receive_TW_PACKET(int sockfd) {
 const char* apply_header(PACKET_TYPE type) {
     switch (type)
     {
+        case SERVER_OK: return "OK\n";
+        case SERVER_ERR: return "ERR\n";
         case LIST: return "LIST\n";
         case READ: return "READ\n";
         case DELETE: return "DEL\n";
+        case LOGIN: return "LOGIN\n";
         default: return "";
     }
 }
 
+TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type) {
+    return make_TW_PACKET(type, 0, NULL);
+}
+
 TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
     TW_PACKET packet;
-    char *message = get_input(lines, prompts);
 
     packet.header = type;
     strcpy(packet.data, apply_header(type));
-    strcat(packet.data, message);
 
-    free(message);
+    if(type != SERVER_OK && type != SERVER_ERR) {
+        char *message = get_input(lines, prompts);
+        strcat(packet.data, message);
+        free(message);
+    }
+        
     return packet;
 }
 
 void print_TW_PACKET(TW_PACKET *packet) {
+    if((*packet).header == INVALID) {
+        perror("Invalid packet.");
+        return;
+    }
+
     printf("%s\n", packet->data);
 }
 
 char* get_input(int lines, va_list *prompts) {
     if(lines == 0) return NULL;
 
+    int var_end = 0;
     int lines_read = 0;
     char *buf, *message = (char*) malloc(sizeof(char));
     memset(message, 0, sizeof(char));
 
     do {
-        if(prompts != NULL) printf("%s", va_arg(*prompts, char*));
+        if(prompts != NULL) {
+            char* prompt = va_arg(*prompts, char*);
+            if(prompt == NULL) var_end = 1;
+            if(!var_end) printf("%s", prompt);
+        }
         buf = readline("");
 
         if(strcmp(buf, ".") == 0) break;

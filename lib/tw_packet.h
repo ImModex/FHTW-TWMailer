@@ -11,6 +11,8 @@
 
 #include <readline/readline.h>
 
+#include "tw_utility.h"
+
 #define MAX_MESSAGE_SIZE 1000
 
 // PACKETS
@@ -22,6 +24,7 @@ typedef enum PACKET_TYPE {
     DELETE,
     SERVER_OK,
     SERVER_ERR,
+    QUIT,
     INVALID
 } PACKET_TYPE;
 
@@ -36,6 +39,7 @@ TW_PACKET receive_TW_PACKET(int sockfd);
 TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts);
 TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type, char* payload);
 void print_TW_PACKET(TW_PACKET *packet);
+void print_TW_PACKET_INDEXED(TW_PACKET *packet);
 char* get_input(int lines, va_list *prompts);
 const char* type2str(PACKET_TYPE type);
 PACKET_TYPE str2type(char* str);

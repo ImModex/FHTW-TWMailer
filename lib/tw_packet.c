@@ -8,7 +8,8 @@ TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
     va_end(prompts);
 
     send_TW_PACKET(sockfd, &packet);
-    TW_PACKET received = receive_TW_PACKET(sockfd);
+    TW_PACKET received;
+    if(type != QUIT) received = receive_TW_PACKET(sockfd);
 
     return received;
 }
@@ -30,19 +31,6 @@ TW_PACKET receive_TW_PACKET(int sockfd) {
     return packet;
 }
 
-const char* type2str(PACKET_TYPE type) {
-    switch (type)
-    {
-        case SERVER_OK: return "OK\n";
-        case SERVER_ERR: return "ERR\n";
-        case LIST: return "LIST\n";
-        case READ: return "READ\n";
-        case DELETE: return "DEL\n";
-        case LOGIN: return "LOGIN\n";
-        default: return "";
-    }
-}
-
 TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type, char* payload) {
     if(payload == NULL) return make_TW_PACKET(type, 0, NULL);
 
@@ -61,7 +49,7 @@ TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
     packet.header = type;
     strcpy(packet.data, type2str(type));
 
-    if(type != SERVER_OK && type != SERVER_ERR) {
+    if(type != SERVER_OK && type != SERVER_ERR && lines != 0) {
         char *message = get_input(lines, prompts);
         strcat(packet.data, message);
         free(message);
@@ -77,6 +65,23 @@ void print_TW_PACKET(TW_PACKET *packet) {
     }
 
     printf("%s\n", packet->data);
+}
+
+void print_TW_PACKET_INDEXED(TW_PACKET *packet) {
+    if((*packet).header == INVALID) {
+        perror("Invalid packet.");
+        return;
+    }
+
+    char** split = split_data(packet->data);
+
+    int i = 0;
+    while(split[i] != NULL) {
+        if(!i) printf("%s\n", split[i]); else printf("%d: %s\n", i-1, split[i]);
+        ++i;
+    }
+
+    free_data(&split);
 }
 
 char* get_input(int lines, va_list *prompts) {
@@ -104,6 +109,7 @@ char* get_input(int lines, va_list *prompts) {
         }
         sprintf(message, "%s%s\n", message, buf);
 
+        free(buf);
         if(lines != -1 && ++lines_read >= lines) break;
     } while(strcmp(buf, ".") != 0);
 
@@ -125,7 +131,23 @@ PACKET_TYPE str2type(char* str) {
         return SERVER_OK;
     } else if(strcmp(str, "ERR") == 0) {
         return SERVER_ERR;
+    } else if(strcmp(str, "QUIT") == 0) {
+        return QUIT;
     }
 
     return INVALID;
+}
+
+const char* type2str(PACKET_TYPE type) {
+    switch (type)
+    {
+        case SERVER_OK: return "OK\n";
+        case SERVER_ERR: return "ERR\n";
+        case LIST: return "LIST\n";
+        case READ: return "READ\n";
+        case DELETE: return "DEL\n";
+        case LOGIN: return "LOGIN\n";
+        case QUIT: return "QUIT\n";
+        default: return "";
+    }
 }

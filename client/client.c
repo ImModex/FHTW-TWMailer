@@ -12,8 +12,6 @@
 
 #include "../lib/tw_packet.h"
 
-int checkUsername(char*);
-
 // CLIENT
 // ./twmailer-client <ip> <port> 
 
@@ -84,7 +82,8 @@ int main(int argc, char *argv[]) {
 
     // Connected
     printf("Successfully connected to server. Please enter a command.\n");
-    while(1) {
+    int running = 1;
+    while(running) {
         char* input = readline("Please enter a command: ");
         
         PACKET_TYPE type = str2type(input);
@@ -104,34 +103,16 @@ int main(int argc, char *argv[]) {
                 answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Index: "); break;
             case LOGIN:
                 answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Password: "); break;
+            case QUIT: TW_PACKET_IO(socketID, QUIT, 0, NULL); running = 0; break;
             default: 
                 break;
         }
 
-        if(answer.header != INVALID) print_TW_PACKET(&answer);
+        if(answer.header != INVALID) if(type != LIST) print_TW_PACKET(&answer); else print_TW_PACKET_INDEXED(&answer); 
 
         free(input);
     }
 
+    close(socketID);
     return 0;
-}
-
-int checkUsername(char* username) {
-    regex_t regex;
-
-    if(regcomp(&regex, "^([a-z0-9]){1,8}$", 0) != 0) {
-        printf("Regex Error.");
-        exit(1);
-    }
-
-    int ret = regexec(&regex, username, 0, NULL, 0);
-
-    if(!ret) {
-        return 1;
-    } else if(ret == REG_NOMATCH) {
-        return 0;
-    } else {
-        printf("Regex Compare Error.");
-        exit(1);
-    }
 }

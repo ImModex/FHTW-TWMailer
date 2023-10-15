@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -26,14 +27,13 @@ typedef struct session {
 } session;
 
 void init();
-char** split_data(char* data);
-void free_data(char*** split);
 TW_PACKET login(char* username, char* password);
 TW_PACKET sv_send(session* session, char* content);
 TW_PACKET list(session* session);
 TW_PACKET sv_read(session* session, int index);
 TW_PACKET del(session* session, int index);
 int grab_index(TW_PACKET *packet);
+queue_t* get_mail_list(session* session);
 
 int main(int argc, char *argv[])
 {
@@ -118,20 +118,20 @@ int main(int argc, char *argv[])
                 service, NI_MAXSERV, NI_NUMERICSERV);
         if (s == 0) {
             printf("Received %zd bytes from %s:%s\n", nread, host, service);
-            print_TW_PACKET(&pktBuf);
-
-            printf("%d -> %s\n", pktBuf.header, type2str(pktBuf.header));
+            //print_TW_PACKET(&pktBuf);
 
             TW_PACKET ans;
+            ans.header = INVALID;
             switch(pktBuf.header) {
                 case SEND: ans = sv_send(&session, pktBuf.data); break;
                 case LIST: ans = list(&session); break;
                 case DELETE: ans = del(&session, grab_index(&pktBuf)); break;
                 case READ: ans = sv_read(&session, grab_index(&pktBuf)); break;
-                default: printf("Test123"); break;
+                default: break;
             }
 
-            //TW_PACKET ans = make_TW_SERVER_PACKET(SERVER_OK, NULL);
+            if(pktBuf.header == QUIT) break;
+            if(ans.header == INVALID) ans = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
             sendto(sfd, &ans, sizeof(ans), 0, (struct sockaddr *) &peer_addr, peer_addrlen);
         }
         else
@@ -144,48 +144,10 @@ void init() {
         mkdir(MAIL_DIR, 0700);
 }
 
-char** split_data(char* data) {
-    char** split = (char**) malloc(sizeof(char*));
-
-    if(split == NULL) {
-        perror("Memory Error (split_data)");
-        exit(1);
-    }
-
-    int index = 0;
-    char* prevPtr = data;
-    char* ptr = data;
-    while(*ptr != '\0') {
-        while(*(ptr++) != '\n');
-
-        split[index] = malloc((ptr - prevPtr) * sizeof(char));
-        strncpy(split[index], prevPtr, (ptr - prevPtr) - sizeof(char));
-
-        prevPtr = ptr;
-        ++index;
-
-        split = realloc(split, (index + 1) * sizeof(char*));
-        split[index] = NULL;
-    }
-
-    return split;
-}
-
-void free_data(char*** split) {
-    char** _split = *split;
-    int index = 0;
-
-    while(_split[index] != NULL) {
-        free(_split[index++]);
-    }
-
-    free(*split);
-}
-
 int grab_index(TW_PACKET *packet) {
     char** split = split_data(packet->data);
     int ret = atoi(split[2]);
-
+    free_data(&split);
     return ret;
 }
 
@@ -199,11 +161,15 @@ TW_PACKET sv_send(session* session, char* content) {
     char **split = split_data(content);
     char path[1024];
 
+    if(!match(split[1], "^([a-z0-9]){1,8}$")) {
+        free_data(&split);
+        return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
+    }
+
     sprintf(path, "%s/%s", MAIL_DIR, split[1]);
     if(access(path, F_OK) != 0) mkdir(path, 0700);
     
     char filename[2048];
-    //sprintf(filename, "%ld_%s", time(0), split[0]); 
     sprintf(filename, "%s/%s", path, reformat_string(split[2]));
     FILE* file = fopen(filename, "w");
     fputs(content, file);
@@ -213,18 +179,7 @@ TW_PACKET sv_send(session* session, char* content) {
     return make_TW_SERVER_PACKET(SERVER_OK, NULL);
 }
 
-int cmpfunc(const void *a, const void *b) {
-    char* _a = (char*)a;
-    char* _b = (char*)b;
-
-    printf("%s vs %s\n", _a, _b);
-
-    printf("%p und %p\n", a, b);
-
-    return tolower(((char*)a)[0]) < tolower(((char*)b)[0]);
-}
-
-TW_PACKET list(session* session) {
+queue_t* get_mail_list(session* session) {
     DIR *dir;
     struct dirent *dirent;
     queue_t *mail_list = mkqueue(sizeof(char*));
@@ -242,16 +197,13 @@ TW_PACKET list(session* session) {
         queue_add(mail_list, mail_name);
     }
 
-
-    int mail_list_bytes = 0;
     // Sort alphabetically
     int i, j;
     int swapped;
     for (i = 0; i < mail_list->length - 1; i++) {
-        mail_list_bytes += strlen((char*)mail_list->queue[i]);
         swapped = 0;
         for (j = 0; j < mail_list->length - i - 1; j++) {
-            if (tolower(((char*)mail_list->queue[j])[0]) > tolower(((char*)mail_list->queue[j + 1])[0])) {
+            if(strcasecmp((char*)mail_list->queue[j], (char*)mail_list->queue[j + 1]) > 0) {
                 void *temp = mail_list->queue[j];
                 mail_list->queue[j] = mail_list->queue[j + 1];
                 mail_list->queue[j + 1] = temp;
@@ -265,131 +217,57 @@ TW_PACKET list(session* session) {
             break;
     }
 
-    char mail_list_str[mail_list_bytes + 1];
-    memset(mail_list_str, 0, mail_list_bytes + 1);
+    closedir(dir);
+    return mail_list;
+}
+
+TW_PACKET list(session* session) {
+    queue_t* mail_list = get_mail_list(session);
+
+    int mail_list_bytes = 0;
     for(int i = 0; i < mail_list->length; i++) {
-        strcat(mail_list_str, (char*)mail_list->queue[i]);
-        strcat(mail_list_str, "\n");
+        mail_list_bytes += strlen((char*)queue_get(mail_list, i));
+    }
+
+    TW_PACKET reply;
+
+    if(mail_list_bytes == 0) {
+        reply = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
+    } else {
+        char mail_list_str[mail_list_bytes + 1];
+        memset(mail_list_str, 0, mail_list_bytes + 1);
+        for(int i = 0; i < mail_list->length; i++) {
+            strcat(mail_list_str, (char*)mail_list->queue[i]);
+            strcat(mail_list_str, "\n");
+        }
+
+        reply = make_TW_SERVER_PACKET(SERVER_OK, mail_list_str);
     }
 
     queue_delete(&mail_list);
-    closedir(dir);
-
-    TW_PACKET reply = make_TW_SERVER_PACKET(SERVER_OK, mail_list_str);
     return reply;
 }
 
 TW_PACKET del(session* session, int index) {
-    DIR *dir;
-    struct dirent *dirent;
-    queue_t *mail_list = mkqueue(sizeof(char*));
-
-    char path[strlen(MAIL_DIR) + strlen(session->username) + 1];
-    sprintf(path, "%s/%s", MAIL_DIR, session->username);
-
-    dir = opendir(path);
-
-    while((dirent = readdir(dir)) != NULL) {
-        if(strcmp(dirent->d_name, ".") == 0 || strcmp(dirent->d_name, "..") == 0) continue;
-
-        char* mail_name = malloc(strlen(dirent->d_name) + 1);
-        strcpy(mail_name, dirent->d_name);
-        queue_add(mail_list, mail_name);
-    }
-
-
-    int mail_list_bytes = 0;
-    // Sort alphabetically
-    int i, j;
-    int swapped;
-    for (i = 0; i < mail_list->length - 1; i++) {
-        mail_list_bytes += strlen((char*)mail_list->queue[i]);
-        swapped = 0;
-        for (j = 0; j < mail_list->length - i - 1; j++) {
-            if (tolower(((char*)mail_list->queue[j])[0]) > tolower(((char*)mail_list->queue[j + 1])[0])) {
-                void *temp = mail_list->queue[j];
-                mail_list->queue[j] = mail_list->queue[j + 1];
-                mail_list->queue[j + 1] = temp;
-                swapped = 1;
-            }
-        }
- 
-        // If no two elements were swapped by inner loop,
-        // then break
-        if (!swapped)
-            break;
-    }
-
-    char mail_list_str[mail_list_bytes + 1];
-    memset(mail_list_str, 0, mail_list_bytes + 1);
-    for(int i = 0; i < mail_list->length; i++) {
-        strcat(mail_list_str, (char*)mail_list->queue[i]);
-        strcat(mail_list_str, "\n");
-    }
+    queue_t* mail_list = get_mail_list(session);
 
     TW_PACKET reply;
     if(mail_list->length <= index) {
         reply = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     } else {
         char fullpath[1024];
-        sprintf(fullpath, "%s/%s", path, (char*) queue_get(mail_list, index));
+        sprintf(fullpath, "%s/%s/%s", MAIL_DIR, session->username, (char*) queue_get(mail_list, index));
+
         if(remove(fullpath) == -1) reply = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
         else reply = make_TW_SERVER_PACKET(SERVER_OK, NULL);
     }
 
     queue_delete(&mail_list);
-    closedir(dir);
-
     return reply;
 }
 
 TW_PACKET sv_read(session* session, int index) {
-    DIR *dir;
-    struct dirent *dirent;
-    queue_t *mail_list = mkqueue(sizeof(char*));
-
-    char path[strlen(MAIL_DIR) + strlen(session->username) + 1];
-    sprintf(path, "%s/%s", MAIL_DIR, session->username);
-
-    dir = opendir(path);
-
-    while((dirent = readdir(dir)) != NULL) {
-        if(strcmp(dirent->d_name, ".") == 0 || strcmp(dirent->d_name, "..") == 0) continue;
-
-        char* mail_name = malloc(strlen(dirent->d_name) + 1);
-        strcpy(mail_name, dirent->d_name);
-        queue_add(mail_list, mail_name);
-    }
-
-
-    int mail_list_bytes = 0;
-    // Sort alphabetically
-    int i, j;
-    int swapped;
-    for (i = 0; i < ((int)mail_list->length) - 1; i++) {
-        mail_list_bytes += strlen((char*)queue_get(mail_list, i));
-        swapped = 0;
-        for (j = 0; j < mail_list->length - i - 1; j++) {
-            if (tolower(((char*)mail_list->queue[j])[0]) > tolower(((char*)mail_list->queue[j + 1])[0])) {
-                void *temp = mail_list->queue[j];
-                mail_list->queue[j] = mail_list->queue[j + 1];
-                mail_list->queue[j + 1] = temp;
-                swapped = 1;
-            }
-        }
- 
-        // If no two elements were swapped by inner loop,
-        // then break
-        if (!swapped)
-            break;
-    }
-
-    char mail_list_str[mail_list_bytes + 1];
-    memset(mail_list_str, 0, mail_list_bytes + 1);
-    for(int i = 0; i < mail_list->length; i++) {
-        strcat(mail_list_str, (char*)mail_list->queue[i]);
-        strcat(mail_list_str, "\n");
-    }
+    queue_t* mail_list = get_mail_list(session);
 
     TW_PACKET reply;
     if(mail_list->length <= index) {
@@ -399,8 +277,6 @@ TW_PACKET sv_read(session* session, int index) {
         sprintf(fullpath, "%s/%s/%s", MAIL_DIR, session->username, (char*) queue_get(mail_list, index));
         
         FILE *mail = fopen(fullpath, "r");
-        
-        printf("Fullpath is %s\n", fullpath);
         if(mail == NULL) reply = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
         else {
             fseek(mail, 0, SEEK_END);
@@ -416,7 +292,5 @@ TW_PACKET sv_read(session* session, int index) {
     }
 
     queue_delete(&mail_list);
-    closedir(dir);
-
     return reply;
 }

@@ -27,7 +27,7 @@ typedef struct session {
 } session;
 
 void init();
-TW_PACKET login(char* username, char* password);
+TW_PACKET login(char* username, char* password, session* session);
 TW_PACKET sv_send(session* session, char* content);
 TW_PACKET list(session* session);
 TW_PACKET sv_read(session* session, int index);
@@ -94,8 +94,7 @@ int main(int argc, char *argv[])
     }
 
     session session;
-    session.logged_in = 1;
-    strcpy(session.username, "wberger");
+    session.logged_in = 0;
     TW_PACKET pktBuf;
     /* Read datagrams and echo them back to sender. */
     for (;;) {
@@ -127,6 +126,12 @@ int main(int argc, char *argv[])
                 case LIST: ans = list(&session); break;
                 case DELETE: ans = del(&session, grab_index(&pktBuf)); break;
                 case READ: ans = sv_read(&session, grab_index(&pktBuf)); break;
+                case LOGIN: {
+                    char** split = split_data(pktBuf.data);
+                    ans = login(split[1], split[2], &session);
+                    free_data(&split);
+                    break;
+                }
                 default: break;
             }
 
@@ -146,31 +151,39 @@ void init() {
 
 int grab_index(TW_PACKET *packet) {
     char** split = split_data(packet->data);
-    int ret = atoi(split[2]);
+    int ret = atoi(split[1]);
     free_data(&split);
     return ret;
 }
 
+TW_PACKET login(char* username, char* password, session* session) {
+    // Handle ldap login
+    strcpy(session->username, username);
+    session->logged_in = 1;
+
+    return make_TW_SERVER_PACKET(SERVER_OK, NULL);
+}
+
 // SEND
 
-// 0 SENDER
-// 1 RECEIVER
-// 2 SUBJ
-// 3 MESSAGE
+// 0 RECEIVER
+// 1 SUBJ
+// 2 MESSAGE
 TW_PACKET sv_send(session* session, char* content) {
+    if(!session->logged_in) return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     char **split = split_data(content);
     char path[1024];
 
-    if(!match(split[1], "^([a-z0-9]){1,8}$")) {
+    if(!match(split[0], "^([a-z0-9]){1,8}$")) {
         free_data(&split);
         return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     }
 
-    sprintf(path, "%s/%s", MAIL_DIR, split[1]);
+    sprintf(path, "%s/%s", MAIL_DIR, split[0]);
     if(access(path, F_OK) != 0) mkdir(path, 0700);
     
     char filename[2048];
-    sprintf(filename, "%s/%s", path, reformat_string(split[2]));
+    sprintf(filename, "%s/%s", path, reformat_string(split[1]));
     FILE* file = fopen(filename, "w");
     fputs(content, file);
     fclose(file);
@@ -181,7 +194,7 @@ TW_PACKET sv_send(session* session, char* content) {
 
 queue_t* get_mail_list(session* session) {
     DIR *dir;
-    struct dirent *dirent;
+    struct dirent *dirent;  
     queue_t *mail_list = mkqueue(sizeof(char*));
 
     char path[strlen(MAIL_DIR) + strlen(session->username) + 1];
@@ -197,24 +210,26 @@ queue_t* get_mail_list(session* session) {
         queue_add(mail_list, mail_name);
     }
 
-    // Sort alphabetically
-    int i, j;
-    int swapped;
-    for (i = 0; i < mail_list->length - 1; i++) {
-        swapped = 0;
-        for (j = 0; j < mail_list->length - i - 1; j++) {
-            if(strcasecmp((char*)mail_list->queue[j], (char*)mail_list->queue[j + 1]) > 0) {
-                void *temp = mail_list->queue[j];
-                mail_list->queue[j] = mail_list->queue[j + 1];
-                mail_list->queue[j + 1] = temp;
-                swapped = 1;
+    if(mail_list->length > 1) {
+        // Sort alphabetically
+        int i, j;
+        int swapped;
+        for (i = 0; i < mail_list->length - 1; i++) {
+            swapped = 0;
+            for (j = 0; j < mail_list->length - i - 1; j++) {
+                if(strcasecmp((char*)mail_list->queue[j], (char*)mail_list->queue[j + 1]) > 0) {
+                    void *temp = mail_list->queue[j];
+                    mail_list->queue[j] = mail_list->queue[j + 1];
+                    mail_list->queue[j + 1] = temp;
+                    swapped = 1;
+                }
             }
+    
+            // If no two elements were swapped by inner loop,
+            // then break
+            if (!swapped)
+                break;
         }
- 
-        // If no two elements were swapped by inner loop,
-        // then break
-        if (!swapped)
-            break;
     }
 
     closedir(dir);
@@ -222,7 +237,12 @@ queue_t* get_mail_list(session* session) {
 }
 
 TW_PACKET list(session* session) {
+    if(!session->logged_in) return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     queue_t* mail_list = get_mail_list(session);
+    if(mail_list->length <= 0) {
+        queue_delete(&mail_list);
+        return make_TW_SERVER_PACKET(SERVER_OK, NULL);
+    }
 
     int mail_list_bytes = 0;
     for(int i = 0; i < mail_list->length; i++) {
@@ -249,7 +269,12 @@ TW_PACKET list(session* session) {
 }
 
 TW_PACKET del(session* session, int index) {
+    if(!session->logged_in) return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     queue_t* mail_list = get_mail_list(session);
+    if(mail_list->length <= 0) {
+        queue_delete(&mail_list);
+        return make_TW_SERVER_PACKET(SERVER_OK, NULL);
+    }
 
     TW_PACKET reply;
     if(mail_list->length <= index) {
@@ -267,6 +292,7 @@ TW_PACKET del(session* session, int index) {
 }
 
 TW_PACKET sv_read(session* session, int index) {
+    if(!session->logged_in) return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     queue_t* mail_list = get_mail_list(session);
 
     TW_PACKET reply;

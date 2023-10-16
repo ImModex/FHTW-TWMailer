@@ -94,13 +94,13 @@ int main(int argc, char *argv[]) {
         switch (type)
         {
             case SEND:
-                answer = TW_PACKET_IO(socketID, type, -1, "Sender: ", "Receiver: ", "Subject: ", "Message:\n", NULL); break;
+                answer = TW_PACKET_IO(socketID, type, -1, "Receiver: ", "Subject: ", "Message:\n", NULL); break;
             case LIST:
-                answer = TW_PACKET_IO(socketID, type, 1, "Username: "); break;
+                answer = TW_PACKET_IO(socketID, type, 0, NULL); break;
             case READ:
-                answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Index: "); break;
+                answer = TW_PACKET_IO(socketID, type, 1, "Index: "); break;
             case DELETE:
-                answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Index: "); break;
+                answer = TW_PACKET_IO(socketID, type, 1, "Index: "); break;
             case LOGIN:
                 answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Password: "); break;
             case QUIT: TW_PACKET_IO(socketID, QUIT, 0, NULL); running = 0; break;

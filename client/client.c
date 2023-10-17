@@ -107,7 +107,10 @@ int main(int argc, char *argv[]) {
                 break;
         }
 
-        if(answer.header != INVALID) if(type != LIST) print_TW_PACKET(&answer); else print_TW_PACKET_INDEXED(&answer); 
+        if(answer.header != INVALID) {
+            if(type != LIST) print_TW_PACKET(&answer); 
+            else print_TW_PACKET_INDEXED(&answer);
+        } 
 
         free(input);
     }

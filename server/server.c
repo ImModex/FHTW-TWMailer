@@ -162,6 +162,9 @@ TW_PACKET login(char* username, char* password, session* session) {
     // Handle ldap login
     strcpy(session->username, username);
     session->logged_in = 1;
+    
+    // TODO REMOVE
+    strcpy(password, "1");
 
     return make_TW_SERVER_PACKET(SERVER_OK, NULL);
 }

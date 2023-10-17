@@ -1,7 +1,7 @@
 #include "queue.h"
 
 // Creates a queue and returns its address
-queue_t* mkqueue(unsigned int blocksize) {
+queue_t* mkqueue(int blocksize) {
     queue_t* queue = (queue_t*) malloc(sizeof(queue_t));
     queue->length = 0;
     queue->blocksize = blocksize;

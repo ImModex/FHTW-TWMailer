@@ -13,7 +13,6 @@
 #include <time.h>
 #include <dirent.h>
 
-
 #include "../lib/tw_packet.h"
 #include "../lib/tw_utility.h"
 #include "../lib/queue.h"
@@ -142,6 +141,9 @@ int main(int argc, char *argv[])
         else
             fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
     }
+
+    close(sfd);
+    return 0;
 }
 
 void init() {

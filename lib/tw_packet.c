@@ -97,6 +97,7 @@ char* get_input(int lines, va_list *prompts) {
             char* prompt = va_arg(*prompts, char*);
             if(prompt == NULL) var_end = 1;
             if(!var_end) printf("%s", prompt);
+            fflush(stdout);
         }
         buf = readline("");
 

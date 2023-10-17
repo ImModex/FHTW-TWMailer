@@ -6,24 +6,30 @@ int match(char* string, const char *regex_str) {
     if(regcomp(&regex, regex_str, REG_EXTENDED | REG_NEWLINE) != 0) return -1;
     int comp = regexec(&regex, string, 0, NULL, 0);
 
-    printf("Matching str: |%s|\n", regex_str);
-    printf("Regex str: |%s|\n", string);
-    printf("Compr: %d\n", comp);
-
     regfree(&regex);
     return comp == 0 ? 1 : 0;
 }
 
+char* readline(char* prompt) {
+    printf("%s", prompt);
+    fflush(stdout);
+
+    char* buf = calloc(MAX_INPUT_LENGTH, sizeof(char));
+    fgets(buf, MAX_INPUT_LENGTH, stdin);
+    buf[strlen(buf) - 1] = '\0';
+    
+    return buf;
+}
+
 char* reformat_string(char* str) {
     int index = 0;
-    printf("%s\n", str);
+
     while(str[index] != '\0') {
         char idk[2];
         idk[0] = str[index];
         idk[1] = '\0';
         if(!match(idk, "[a-zA-Z0-9]")) str[index] = '_';
         ++index;
-        printf("%c -> %d\n", str[index], index);
     }
 
     return str;

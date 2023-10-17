@@ -8,7 +8,6 @@
 #include <unistd.h>
 
 #include <regex.h>
-#include <readline/readline.h>
 
 #include "../lib/tw_packet.h"
 

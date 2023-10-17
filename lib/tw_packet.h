@@ -9,8 +9,6 @@
 #include <netdb.h>
 #include <unistd.h>
 
-#include <readline/readline.h>
-
 #include "tw_utility.h"
 
 #define MAX_MESSAGE_SIZE 1000

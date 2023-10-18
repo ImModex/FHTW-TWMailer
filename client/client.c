@@ -6,10 +6,14 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <regex.h>
 
 #include "../lib/tw_packet.h"
+
+#define PORT 10101
 
 // CLIENT
 // ./twmailer-client <ip> <port> 
@@ -22,65 +26,41 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // Check and convert domains etc to IPv4 addresses
-    struct addrinfo requirements;
-    memset(&requirements, 0, sizeof(requirements));
+    int sockfd;
+    char buffer[1024];
+    struct sockaddr_in address;
+    int message_size;
 
-    requirements.ai_family = AF_INET;
-    requirements.ai_socktype = SOCK_DGRAM;
-    requirements.ai_flags = 0;
-    requirements.ai_protocol = 0;
-
-
-    struct addrinfo *server;
-    char* ip = argv[1];
-    char* port = argv[2];
-    int errno = getaddrinfo(ip, port, &requirements, &server);
-
-    if(errno != 0) {
-        printf("An error occured. Getaddrinfo Error: %s\n", gai_strerror(errno));
-        exit(1);
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("Socket error");
+        return EXIT_FAILURE;
     }
 
-    // Try to connect to given IP address
-    int socketID;
-    struct addrinfo *results;
-    for( results = server; results != NULL; results = server->ai_next ) {
-        socketID = socket(results->ai_family, results->ai_socktype, results->ai_protocol);
-
-        if(socketID == -1)
-            continue;
-
-        if(connect(socketID, results->ai_addr, results->ai_addrlen) == -1) {
-            printf("Connection could not be established...\n");
-            exit(1);
-        } else break;
-
-        close(socketID);
+    memset(&address, 0, sizeof(address));
+    address.sin_family = AF_INET;       
+    address.sin_port = htons(PORT);
+    if (argc < 2) {
+        inet_aton("127.0.0.1", &address.sin_addr);
+    } else {
+        inet_aton(argv[1], &address.sin_addr);
     }
 
-    freeaddrinfo(server);
+    if (connect(sockfd, (struct sockaddr *)&address, sizeof(address)) == -1) {
+        perror("Connect error - no server available");
+        return EXIT_FAILURE;
+    }
+    printf("Connection with server (%s) established\n", inet_ntoa(address.sin_addr));
 
-    if(results == NULL) {
-        printf("Could not connect.\n");
-        exit(1);
+    message_size = recv(sockfd, buffer, 1023, 0);
+    if (message_size == -1) {
+        perror("recv error");
+    } else if (message_size == 0) {
+        printf("Server closed remote socket\n"); 
+    } else {
+        buffer[message_size] = '\0';
+        printf("%s", buffer);
     }
 
-    // Client Hello
-    if(send(socketID, "hello", 6 * sizeof(char), MSG_NOSIGNAL) == -1) {
-        printf("Connection could not be established...\n");
-        exit(1);
-    }
-
-    // Server Hello
-    char buffer[100];
-    if(read(socketID, buffer, 100) == -1) {
-        printf("Connection could not be established...\n");
-        exit(1);
-    }
-
-    // Connected
-    printf("Successfully connected to server. Please enter a command.\n");
     int running = 1;
     while(running) {
         char* input = readline("Please enter a command: ");
@@ -93,16 +73,16 @@ int main(int argc, char *argv[]) {
         switch (type)
         {
             case SEND:
-                answer = TW_PACKET_IO(socketID, type, -1, "Receiver: ", "Subject: ", "Message:\n", NULL); break;
+                answer = TW_PACKET_IO(sockfd, type, -1, "Receiver: ", "Subject: ", "Message:\n", NULL); break;
             case LIST:
-                answer = TW_PACKET_IO(socketID, type, 0, NULL); break;
+                answer = TW_PACKET_IO(sockfd, type, 0, NULL); break;
             case READ:
-                answer = TW_PACKET_IO(socketID, type, 1, "Index: "); break;
+                answer = TW_PACKET_IO(sockfd, type, 1, "Index: "); break;
             case DELETE:
-                answer = TW_PACKET_IO(socketID, type, 1, "Index: "); break;
+                answer = TW_PACKET_IO(sockfd, type, 1, "Index: "); break;
             case LOGIN:
-                answer = TW_PACKET_IO(socketID, type, 2, "Username: ", "Password: "); break;
-            case QUIT: TW_PACKET_IO(socketID, QUIT, 0, NULL); running = 0; break;
+                answer = TW_PACKET_IO(sockfd, type, 2, "Username: ", "Password: "); break;
+            case QUIT: TW_PACKET_IO(sockfd, QUIT, 0, NULL); running = 0; break;
             default: 
                 break;
         }
@@ -115,6 +95,14 @@ int main(int argc, char *argv[]) {
         free(input);
     }
 
-    close(socketID);
+    if (sockfd != -1)
+    {
+        if (shutdown(sockfd, SHUT_RDWR) == -1) {
+            perror("shutdown create_socket"); 
+        } if (close(sockfd) == -1) {
+            perror("close create_socket");
+        }
+        sockfd = -1;
+    }
     return 0;
 }

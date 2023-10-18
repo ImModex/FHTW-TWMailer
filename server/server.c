@@ -12,20 +12,39 @@
 #include <unistd.h>
 #include <time.h>
 #include <dirent.h>
+#include <pthread.h>
+#include <signal.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "../lib/tw_packet.h"
 #include "../lib/tw_utility.h"
 #include "../lib/queue.h"
 
 #define MAIL_DIR "./inbox"
-// ./inbox/<user>/date_sender
+#define MAX_CONNECTIONS 10
+#define PORT 10101
+
+typedef struct connection {
+    int socketfd;
+    pthread_t thread_id;
+} connection;
 
 typedef struct session {
     int logged_in;
     char username[9];
 } session;
 
+int base_sockfd = -1;
+int abort_requested = 0;
+connection connection_pool[MAX_CONNECTIONS];
+
+
 void init();
+void signalHandler(int sig);
+void* handle_client(void *conn);
+connection* get_connection_slot();
+
 TW_PACKET login(char* username, char* password, session* session);
 TW_PACKET sv_send(session* session, char* content);
 TW_PACKET list(session* session);
@@ -37,118 +56,215 @@ queue_t* get_mail_list(session* session);
 int main(int argc, char *argv[])
 {
     init();
+    if (signal(SIGINT, signalHandler) == SIG_ERR) {
+        perror("signal can not be registered");
+        return EXIT_FAILURE;
+    }
 
-    int                      sfd, s;
-    ssize_t                  nread;
-    socklen_t                peer_addrlen;
-    struct addrinfo          hints;
-    struct addrinfo          *result, *rp;
-    struct sockaddr_storage  peer_addr;
+    int reuseValue = 1;
+    socklen_t addrlen;
+    struct sockaddr_in address, cliaddress;
 
     if (argc != 2) {
         fprintf(stderr, "Usage: %s port\n", argv[0]);
         exit(EXIT_FAILURE);
-
     }
 
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;    /* Allow IPv4 or IPv6 */
-    hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
-    hints.ai_flags = AI_PASSIVE;    /* For wildcard IP address */
-    hints.ai_protocol = 0;          /* Any protocol */
-    hints.ai_canonname = NULL;
-    hints.ai_addr = NULL;
-    hints.ai_next = NULL;
-
-    s = getaddrinfo(NULL, argv[1], &hints, &result);
-    if (s != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
-        exit(EXIT_FAILURE);
-
+    if ((base_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("Socket error");
+        return EXIT_FAILURE;
     }
 
-    /* getaddrinfo() returns a list of address structures.
-     *               Try each address until we successfully bind(2).
-     *                             If socket(2) (or bind(2)) fails, we (close the socket
-     *                                           and) try the next address. */
-
-    for (rp = result; rp != NULL; rp = rp->ai_next) {
-        sfd = socket(rp->ai_family, rp->ai_socktype,
-                rp->ai_protocol);
-        if (sfd == -1)
-            continue;
-
-        if (bind(sfd, rp->ai_addr, rp->ai_addrlen) == 0)
-            break;                  /* Success */
-
-        close(sfd);
-
+    if (setsockopt(base_sockfd, SOL_SOCKET, SO_REUSEADDR, &reuseValue, sizeof(reuseValue)) == -1) {
+        perror("set socket options - reuseAddr");
+        return EXIT_FAILURE;
     }
 
-    freeaddrinfo(result);           /* No longer needed */
-
-    if (rp == NULL) {               /* No address succeeded */
-        fprintf(stderr, "Could not bind\n");
-        exit(EXIT_FAILURE);
+    if (setsockopt(base_sockfd, SOL_SOCKET, SO_REUSEPORT, &reuseValue, sizeof(reuseValue)) == -1) {
+        perror("set socket options - reusePort");
+        return EXIT_FAILURE;
     }
 
-    session session;
-    session.logged_in = 0;
-    TW_PACKET pktBuf;
-    /* Read datagrams and echo them back to sender. */
-    for (;;) {
-        memset(&pktBuf, 0, sizeof(pktBuf));
-        char host[NI_MAXHOST], service[NI_MAXSERV];
+    memset(&address, 0, sizeof(address));
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
 
-        peer_addrlen = sizeof(peer_addr);
-        nread = recvfrom(sfd, &pktBuf, sizeof(pktBuf), 0,
-                (struct sockaddr *) &peer_addr, &peer_addrlen);
-        if (nread == -1)
-            continue;
+    if (bind(base_sockfd, (struct sockaddr *)&address, sizeof(address)) == -1) {
+        perror("bind error");
+        return EXIT_FAILURE;
+    }
 
-        if(nread == 6) {
-            sendto(sfd, "hello", 6, 0, (struct sockaddr *) &peer_addr, peer_addrlen);
-            continue;
-        }
+    if (listen(base_sockfd, 5) == -1) {
+        perror("listen error");
+        return EXIT_FAILURE;
+    }
 
-        s = getnameinfo((struct sockaddr *) &peer_addr,
-                peer_addrlen, host, NI_MAXHOST,
-                service, NI_MAXSERV, NI_NUMERICSERV);
-        if (s == 0) {
-            printf("Received %zd bytes from %s:%s\n", nread, host, service);
-            //print_TW_PACKET(&pktBuf);
-
-            TW_PACKET ans;
-            ans.header = INVALID;
-            switch(pktBuf.header) {
-                case SEND: ans = sv_send(&session, pktBuf.data); break;
-                case LIST: ans = list(&session); break;
-                case DELETE: ans = del(&session, grab_index(&pktBuf)); break;
-                case READ: ans = sv_read(&session, grab_index(&pktBuf)); break;
-                case LOGIN: {
-                    char** split = split_data(pktBuf.data);
-                    ans = login(split[1], split[2], &session);
-                    free_data(&split);
-                    break;
-                }
-                default: break;
+    while (!abort_requested)
+    {
+        int new_socket = -1;
+        printf("Waiting for connections...\n");
+        addrlen = sizeof(struct sockaddr_in);
+        if ((new_socket = accept(base_sockfd, (struct sockaddr *)&cliaddress, &addrlen)) == -1)
+        {
+            if (abort_requested) {
+                perror("accept error after aborted");
+            } else {
+                perror("accept error");
             }
-
-            if(pktBuf.header == QUIT) break;
-            if(ans.header == INVALID) ans = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
-            sendto(sfd, &ans, sizeof(ans), 0, (struct sockaddr *) &peer_addr, peer_addrlen);
+            break;
         }
-        else
-            fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
+
+
+        connection *new_connection = get_connection_slot();
+        if(new_connection == NULL) {
+            printf("Client %s:%d tried to connect but server is full...\n", inet_ntoa(cliaddress.sin_addr), ntohs(cliaddress.sin_port));
+            continue;
+            // Handle client rejection
+        }
+        printf("Client connected from %s:%d...\n", inet_ntoa(cliaddress.sin_addr), ntohs(cliaddress.sin_port));
+
+        new_connection->socketfd = new_socket;
+        pthread_create(&new_connection->thread_id, NULL, handle_client, new_connection);
     }
 
-    close(sfd);
+    if (base_sockfd != -1) {
+        if (shutdown(base_sockfd, SHUT_RDWR) == -1)
+        {
+            perror("shutdown create_socket");
+        }
+        if (close(base_sockfd) == -1)
+        {
+            perror("close create_socket");
+        }
+        base_sockfd = -1;
+    }
+
     return 0;
 }
 
 void init() {
     if(access(MAIL_DIR, F_OK) != 0)
         mkdir(MAIL_DIR, 0700);
+    
+    for(int i = 0; i < MAX_CONNECTIONS; i++) {
+        connection_pool[i].socketfd = -1;
+        connection_pool[i].thread_id = 0;
+    }
+}
+
+void signalHandler(int sig)
+{
+    if (sig == SIGINT)
+    {
+        printf("Abort Requested...\n");
+        abort_requested = 1;
+
+        for(int i = 0; i < MAX_CONNECTIONS; i++) {
+            if (connection_pool[i].socketfd != -1)
+            {
+                if (shutdown(connection_pool[i].socketfd, SHUT_RDWR) == -1)
+                {
+                    perror("shutdown new_socket");
+                }
+                if (close(connection_pool[i].socketfd) == -1)
+                {
+                    perror("close new_socket");
+                }
+                connection_pool[i].socketfd = -1;
+            }
+        }
+
+        if (base_sockfd != -1)
+        {
+            if (shutdown(base_sockfd, SHUT_RDWR) == -1)
+            {
+                perror("shutdown create_socket");
+            }
+            if (close(base_sockfd) == -1)
+            {
+                perror("close create_socket");
+            }
+            base_sockfd = -1;
+        }
+    }
+    else
+    {
+        exit(sig);
+    }
+}
+
+void* handle_client(void *connptr) {
+    connection *conn = (connection*) connptr;
+
+    session session;
+    session.logged_in = 0;
+    TW_PACKET pktBuf;
+    int msg_size = 0;
+
+    char buffer[1024];
+    strcpy(buffer, "Welcome to FHTW-Mailer!\r\nPlease enter your commands...\r\n");
+    if (send(conn->socketfd, buffer, strlen(buffer), 0) == -1) {
+        perror("send failed");
+        return NULL;
+    }
+    
+    do {
+        msg_size = recv(conn->socketfd, &pktBuf, sizeof(pktBuf), 0);
+        if (msg_size == -1) {
+            if (abort_requested) {
+                perror("recv error after aborted");
+            } else {
+                perror("recv error");
+            }
+            break;
+        }
+
+        if (msg_size == 0) {
+            printf("Client closed remote socket\n");
+            break;
+        }
+
+        printf("Received %d bytes from %d\n", msg_size, conn->socketfd);
+
+        TW_PACKET ans;
+        ans.header = INVALID;
+        switch(pktBuf.header) {
+            case SEND: ans = sv_send(&session, pktBuf.data); break;
+            case LIST: ans = list(&session); break;
+            case DELETE: ans = del(&session, grab_index(&pktBuf)); break;
+            case READ: ans = sv_read(&session, grab_index(&pktBuf)); break;
+            case LOGIN: {
+                char** split = split_data(pktBuf.data);
+                ans = login(split[1], split[2], &session);
+                free_data(&split);
+                break;
+            }
+            default: break;
+        }
+
+        if(pktBuf.header == QUIT) break;
+        if(ans.header == INVALID) ans = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
+        if (send(conn->socketfd, &ans, sizeof(ans), 0) == -1) {
+            perror("send answer failed");
+            return NULL;
+        }
+    } while(!abort_requested);
+
+    conn->socketfd = -1;
+    conn->thread_id = 0;
+    pthread_exit(NULL);
+    return NULL;
+}
+
+connection* get_connection_slot() {
+    connection* conn = NULL;
+
+    for(int i = 0; i < MAX_CONNECTIONS; i++) {
+        if (connection_pool[i].socketfd == -1 && connection_pool[i].thread_id == 0) return &connection_pool[i];
+    }
+
+    return conn;
 }
 
 int grab_index(TW_PACKET *packet) {

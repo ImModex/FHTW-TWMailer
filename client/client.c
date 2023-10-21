@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
         PACKET_TYPE type = str2type(input);
 
         TW_PACKET answer;
-        answer.header = INVALID;
+        answer.header.type = INVALID;
 
         switch (type)
         {
@@ -87,12 +87,13 @@ int main(int argc, char *argv[]) {
                 break;
         }
 
-        if(answer.header != INVALID) {
+        if(answer.header.type != INVALID) {
             if(type != LIST) print_TW_PACKET(&answer); 
             else print_TW_PACKET_INDEXED(&answer);
         } 
 
         free(input);
+        free_TW_PACKET(&answer);
     }
 
     if (sockfd != -1)

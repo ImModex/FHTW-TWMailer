@@ -26,9 +26,14 @@ typedef enum PACKET_TYPE {
     INVALID
 } PACKET_TYPE;
 
+typedef struct TW_PACKET_HEADER {
+    PACKET_TYPE type;
+    unsigned int size;
+} TW_PACKET_HEADER;
+
 typedef struct TW_PACKET {
-    PACKET_TYPE header;
-    char data[MAX_MESSAGE_SIZE];
+    TW_PACKET_HEADER header;
+    char* data;
 } TW_PACKET;
 
 TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...);
@@ -38,6 +43,7 @@ TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts);
 TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type, char* payload);
 void print_TW_PACKET(TW_PACKET *packet);
 void print_TW_PACKET_INDEXED(TW_PACKET *packet);
+void free_TW_PACKET(TW_PACKET *packet);
 char* get_input(int lines, va_list *prompts);
 const char* type2str(PACKET_TYPE type);
 PACKET_TYPE str2type(char* str);

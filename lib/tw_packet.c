@@ -8,6 +8,8 @@ TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
     va_end(prompts);
 
     send_TW_PACKET(sockfd, &packet);
+    free_TW_PACKET(&packet);
+
     TW_PACKET received;
     if(type != QUIT) received = receive_TW_PACKET(sockfd);
 
@@ -15,17 +17,42 @@ TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
 }
 
 void send_TW_PACKET(int sockfd, TW_PACKET *packet) {
-    if(write(sockfd, packet, sizeof(*packet)) != sizeof(*packet)) {
-        printf("Could not send message to server!\n");
+    if(write(sockfd, &packet->header, sizeof(packet->header)) != sizeof(packet->header)) {
+        printf("Could not send message header to server!\n");
+        exit(1);
+    }
+
+    if(write(sockfd, packet->data, packet->header.size) != packet->header.size) {
+        printf("Could not send message data to server!\n");
         exit(1);
     }
 }
 
 TW_PACKET receive_TW_PACKET(int sockfd) {
     TW_PACKET packet;
-    if(read(sockfd, &packet, sizeof(TW_PACKET)) == -1) {
+    int message_size = 0;
+    if((message_size = read(sockfd, &packet.header, sizeof(TW_PACKET_HEADER))) == -1) {
         printf("Connection could not be established...\n");
         exit(1);
+    }
+
+    if(message_size == 0) {
+        packet.header.type = QUIT;
+        packet.header.size = 0;
+        return packet;
+    }
+
+    packet.data = calloc(packet.header.size, sizeof(char));
+
+    if((message_size = read(sockfd, packet.data, packet.header.size)) == -1) {
+        printf("Connection could not be established...\n");
+        exit(1);
+    }
+
+    if(message_size == 0) {
+        packet.header.type = QUIT;
+        packet.header.size = 0;
+        return packet;
     }
 
     return packet;
@@ -35,23 +62,28 @@ TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type, char* payload) {
     if(payload == NULL) return make_TW_PACKET(type, 0, NULL);
 
     TW_PACKET packet;
-
-    packet.header = type;
-    strcpy(packet.data, type2str(type));
-    strcat(packet.data, payload);
+    	
+    packet.data = NULL;
+    packet.header.type = type;
+    tw_strcpy(&packet.data, type2str(type));
+    tw_strcat(&packet.data, payload);
+    packet.header.size = strlen(packet.data) + 1;
 
     return packet;
 }
 
 TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
     TW_PACKET packet;
+    packet.header.type = type;
+    packet.data = NULL;
 
-    packet.header = type;
-    strcpy(packet.data, type2str(type));
+    tw_strcpy(&packet.data, type2str(type));
+    packet.header.size = strlen(packet.data) + 1;
 
     if(type != SERVER_OK && type != SERVER_ERR && lines != 0) {
         char *message = get_input(lines, prompts);
-        strcat(packet.data, message);
+        tw_strcat(&packet.data, message);
+        packet.header.size = strlen(packet.data) + 1;
         free(message);
     }
         
@@ -59,7 +91,7 @@ TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
 }
 
 void print_TW_PACKET(TW_PACKET *packet) {
-    if((*packet).header == INVALID) {
+    if((*packet).header.type == INVALID) {
         perror("Invalid packet.");
         return;
     }
@@ -68,7 +100,7 @@ void print_TW_PACKET(TW_PACKET *packet) {
 }
 
 void print_TW_PACKET_INDEXED(TW_PACKET *packet) {
-    if((*packet).header == INVALID) {
+    if((*packet).header.type == INVALID) {
         perror("Invalid packet.");
         return;
     }
@@ -82,6 +114,11 @@ void print_TW_PACKET_INDEXED(TW_PACKET *packet) {
     }
 
     free_data(&split);
+}
+
+void free_TW_PACKET(TW_PACKET *packet) {
+    if(packet->data != NULL) free(packet->data);
+    packet->data = NULL;
 }
 
 char* get_input(int lines, va_list *prompts) {
@@ -101,7 +138,10 @@ char* get_input(int lines, va_list *prompts) {
         }
         buf = readline("");
 
-        if(strcmp(buf, ".") == 0) break;
+        if(strcmp(buf, ".") == 0) {
+            free(buf);
+            break;
+        }
 
         message = (char*) realloc(message, strlen(message) + strlen(buf) + 2);
         if(message == NULL) {

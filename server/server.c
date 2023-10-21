@@ -128,16 +128,10 @@ int main(int argc, char *argv[])
         pthread_create(&new_connection->thread_id, NULL, handle_client, new_connection);
     }
 
-    if (base_sockfd != -1) {
-        if (shutdown(base_sockfd, SHUT_RDWR) == -1)
-        {
-            perror("shutdown create_socket");
+    for(int i = 0; i < MAX_CONNECTIONS; i++) {
+        if(connection_pool[i].thread_id != 0) {
+            pthread_join(connection_pool[i].thread_id, NULL);
         }
-        if (close(base_sockfd) == -1)
-        {
-            perror("close create_socket");
-        }
-        base_sockfd = -1;
     }
 
     return 0;
@@ -200,7 +194,6 @@ void* handle_client(void *connptr) {
     session session;
     session.logged_in = 0;
     TW_PACKET pktBuf;
-    int msg_size = 0;
 
     char buffer[1024];
     strcpy(buffer, "Welcome to FHTW-Mailer!\r\nPlease enter your commands...\r\n");
@@ -210,26 +203,12 @@ void* handle_client(void *connptr) {
     }
     
     do {
-        msg_size = recv(conn->socketfd, &pktBuf, sizeof(pktBuf), 0);
-        if (msg_size == -1) {
-            if (abort_requested) {
-                perror("recv error after aborted");
-            } else {
-                perror("recv error");
-            }
-            break;
-        }
-
-        if (msg_size == 0) {
-            printf("Client closed remote socket\n");
-            break;
-        }
-
-        printf("Received %d bytes from %d\n", msg_size, conn->socketfd);
+        pktBuf = receive_TW_PACKET(conn->socketfd);
+        printf("Received %ld bytes from %d\n", pktBuf.header.size + sizeof(TW_PACKET_HEADER), conn->socketfd);
 
         TW_PACKET ans;
-        ans.header = INVALID;
-        switch(pktBuf.header) {
+        ans.header.type = INVALID;
+        switch(pktBuf.header.type) {
             case SEND: ans = sv_send(&session, pktBuf.data); break;
             case LIST: ans = list(&session); break;
             case DELETE: ans = del(&session, grab_index(&pktBuf)); break;
@@ -243,17 +222,24 @@ void* handle_client(void *connptr) {
             default: break;
         }
 
-        if(pktBuf.header == QUIT) break;
-        if(ans.header == INVALID) ans = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
-        if (send(conn->socketfd, &ans, sizeof(ans), 0) == -1) {
-            perror("send answer failed");
-            return NULL;
+        if(pktBuf.header.type == QUIT) {
+            free_TW_PACKET(&pktBuf);
+            break;
         }
+
+        if(ans.header.type == INVALID) ans = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
+        
+        send_TW_PACKET(conn->socketfd, &ans);
+        free_TW_PACKET(&ans);
+        free_TW_PACKET(&pktBuf);
     } while(!abort_requested);
+
+    free_TW_PACKET(&pktBuf);
+    pthread_exit(NULL);
 
     conn->socketfd = -1;
     conn->thread_id = 0;
-    pthread_exit(NULL);
+
     return NULL;
 }
 
@@ -320,6 +306,11 @@ queue_t* get_mail_list(session* session) {
 
     char path[strlen(MAIL_DIR) + strlen(session->username) + 1];
     sprintf(path, "%s/%s", MAIL_DIR, session->username);
+
+    if(access(path, F_OK) != 0) {
+        mkdir(path, 0700);
+        return mail_list;
+    }
 
     dir = opendir(path);
 

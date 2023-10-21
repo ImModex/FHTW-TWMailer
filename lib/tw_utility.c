@@ -10,6 +10,26 @@ int match(char* string, const char *regex_str) {
     return comp == 0 ? 1 : 0;
 }
 
+char* tw_strcpy(char** dest, const char* src) {
+    size_t len = strlen(src) + 1;
+
+    if(*dest == NULL) *dest = malloc(len * sizeof(char));
+    else *dest = realloc(*dest, (strlen(*dest) + len) * sizeof(char));
+    strcpy(*dest, src);
+
+    return *dest;
+}
+
+char* tw_strcat(char** dest, const char* src) {
+    size_t len = strlen(src) + 1;
+
+    if(*dest == NULL) *dest = malloc(len * sizeof(char));
+    else *dest = realloc(*dest, (strlen(*dest) + len) * sizeof(char));
+    strcat(*dest, src);
+
+    return *dest;
+}
+
 char* readline(char* prompt) {
     printf("%s", prompt);
     fflush(stdout);

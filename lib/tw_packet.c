@@ -1,5 +1,6 @@
 #include "tw_packet.h"
 
+// Handles making, sending and receiving an answer packet
 TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
     va_list prompts;
     va_start(prompts, lines);
@@ -16,6 +17,7 @@ TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
     return received;
 }
 
+// Handles sending of a packet
 void send_TW_PACKET(int sockfd, TW_PACKET *packet) {
     if(write(sockfd, &packet->header, sizeof(packet->header)) != sizeof(packet->header)) {
         printf("Could not send message header to server!\n");
@@ -28,6 +30,7 @@ void send_TW_PACKET(int sockfd, TW_PACKET *packet) {
     }
 }
 
+// Handles receiving of a packet
 TW_PACKET receive_TW_PACKET(int sockfd) {
     TW_PACKET packet;
     int message_size = 0;
@@ -39,6 +42,7 @@ TW_PACKET receive_TW_PACKET(int sockfd) {
     if(message_size == 0) {
         packet.header.type = QUIT;
         packet.header.size = 0;
+        packet.data = NULL;
         return packet;
     }
 
@@ -52,12 +56,14 @@ TW_PACKET receive_TW_PACKET(int sockfd) {
     if(message_size == 0) {
         packet.header.type = QUIT;
         packet.header.size = 0;
+        packet.data = NULL;
         return packet;
     }
 
     return packet;
 }
 
+// Creates a server-type packet
 TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type, char* payload) {
     if(payload == NULL) return make_TW_PACKET(type, 0, NULL);
 
@@ -72,6 +78,7 @@ TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type, char* payload) {
     return packet;
 }
 
+// Creates a general packet
 TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
     TW_PACKET packet;
     packet.header.type = type;
@@ -90,6 +97,7 @@ TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
     return packet;
 }
 
+// Prints a packet
 void print_TW_PACKET(TW_PACKET *packet) {
     if((*packet).header.type == INVALID) {
         perror("Invalid packet.");
@@ -99,6 +107,7 @@ void print_TW_PACKET(TW_PACKET *packet) {
     printf("%s\n", packet->data);
 }
 
+// Prints a packet with indexes (used for LIST)
 void print_TW_PACKET_INDEXED(TW_PACKET *packet) {
     if((*packet).header.type == INVALID) {
         perror("Invalid packet.");
@@ -113,14 +122,17 @@ void print_TW_PACKET_INDEXED(TW_PACKET *packet) {
         ++i;
     }
 
+    printf("\n");
     free_data(&split);
 }
 
+// Frees a packet
 void free_TW_PACKET(TW_PACKET *packet) {
     if(packet->data != NULL) free(packet->data);
     packet->data = NULL;
 }
 
+// Gets variable length of input with variable length of prompts
 char* get_input(int lines, va_list *prompts) {
     if(lines == 0) return NULL;
 
@@ -138,7 +150,7 @@ char* get_input(int lines, va_list *prompts) {
         }
         buf = readline("");
 
-        if(strcmp(buf, ".") == 0) {
+        if(lines == -1 && lines_read >= 2 && strcmp(buf, ".") == 0) {
             free(buf);
             break;
         }
@@ -151,12 +163,13 @@ char* get_input(int lines, va_list *prompts) {
         sprintf(message, "%s%s\n", message, buf);
 
         free(buf);
-        if(lines != -1 && ++lines_read >= lines) break;
-    } while(strcmp(buf, ".") != 0);
+        if(++lines_read >= lines && lines != -1) break;
+    } while(1);
 
     return message;
 }
 
+// Convert string to packet type
 PACKET_TYPE str2type(char* str) {
     if(strcmp(str, "SEND") == 0) {
         return SEND;
@@ -179,6 +192,7 @@ PACKET_TYPE str2type(char* str) {
     return INVALID;
 }
 
+// Convert packet type to string
 const char* type2str(PACKET_TYPE type) {
     switch (type)
     {

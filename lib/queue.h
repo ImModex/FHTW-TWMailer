@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// Queue implementation
+// "Queue" implementation
 typedef struct queue_t {
     void** queue;
     int length;

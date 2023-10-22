@@ -1,5 +1,8 @@
 #include "tw_utility.h"  
 
+// Checks if a string matches a regex or not
+// 1... Match
+// 0... No match
 int match(char* string, const char *regex_str) {
     regex_t regex;
 
@@ -10,6 +13,7 @@ int match(char* string, const char *regex_str) {
     return comp == 0 ? 1 : 0;
 }
 
+// strcpy(...) but re-sizes the destination pointer to fit the data
 char* tw_strcpy(char** dest, const char* src) {
     size_t len = strlen(src) + 1;
 
@@ -20,6 +24,7 @@ char* tw_strcpy(char** dest, const char* src) {
     return *dest;
 }
 
+// strcat(...) but re-sizes the destination pointer to fit the data
 char* tw_strcat(char** dest, const char* src) {
     size_t len = strlen(src) + 1;
 
@@ -30,6 +35,7 @@ char* tw_strcat(char** dest, const char* src) {
     return *dest;
 }
 
+// Prints a prompt, collects input and returns a pointer to it
 char* readline(char* prompt) {
     printf("%s", prompt);
     fflush(stdout);
@@ -41,6 +47,7 @@ char* readline(char* prompt) {
     return buf;
 }
 
+// Turn every string into letters, numbers and underscores (incompatible chars will be turned into underscores)
 char* reformat_string(char* str) {
     int index = 0;
 
@@ -55,6 +62,7 @@ char* reformat_string(char* str) {
     return str;
 }
 
+// Lowercases an entire string
 char* str_to_lower(char* str) {
     for(int i = 0; str[i] != '\0'; i++) {
         str[i] = tolower(str[i]);
@@ -62,6 +70,7 @@ char* str_to_lower(char* str) {
     return str;
 }
 
+// Returns an array of strings seperated by \n
 char** split_data(char* data) {
     char** split = (char**) malloc(sizeof(char*));
 
@@ -89,6 +98,7 @@ char** split_data(char* data) {
     return split;
 }
 
+// Frees data that has been split by split_data(...)
 void free_data(char*** split) {
     char** _split = *split;
     int index = 0;

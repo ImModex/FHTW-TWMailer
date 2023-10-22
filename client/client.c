@@ -9,14 +9,20 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <signal.h>
+
 #include <regex.h>
 
 #include "../lib/tw_packet.h"
 
 #define PORT 10101
 
+int running = 1;
+
 // CLIENT
 // ./twmailer-client <ip> <port> 
+
+void signalHandler(int sig);
 
 int main(int argc, char *argv[]) {
 
@@ -26,6 +32,13 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    // Register signal handler
+    if (signal(SIGINT, signalHandler) == SIG_ERR) {
+        perror("signal can not be registered");
+        return EXIT_FAILURE;
+    }
+
+    // Create socket, connect and receive server hello
     int sockfd;
     char buffer[1024];
     struct sockaddr_in address;
@@ -61,17 +74,20 @@ int main(int argc, char *argv[]) {
         printf("%s", buffer);
     }
 
-    int running = 1;
     while(running) {
+        // Collect input commnad
         char* input = readline("Please enter a command: ");
-        
-        PACKET_TYPE type = str2type(input);
+        if(!running) {
+            free(input);
+            break;   
+        }
 
+        PACKET_TYPE type = str2type(input);
         TW_PACKET answer;
         answer.header.type = INVALID;
 
-        switch (type)
-        {
+        // Depending on command, build the corresponding packets, send them and receive a response
+        switch (type) {
             case SEND:
                 answer = TW_PACKET_IO(sockfd, type, -1, "Receiver: ", "Subject: ", "Message:\n", NULL); break;
             case LIST:
@@ -87,6 +103,7 @@ int main(int argc, char *argv[]) {
                 break;
         }
 
+        // Print the response
         if(answer.header.type != INVALID) {
             if(type != LIST) print_TW_PACKET(&answer); 
             else print_TW_PACKET_INDEXED(&answer);
@@ -96,6 +113,7 @@ int main(int argc, char *argv[]) {
         free_TW_PACKET(&answer);
     }
 
+    // On shutdown, close socket
     if (sockfd != -1)
     {
         if (shutdown(sockfd, SHUT_RDWR) == -1) {
@@ -106,4 +124,15 @@ int main(int argc, char *argv[]) {
         sockfd = -1;
     }
     return 0;
+}
+
+void signalHandler(int sig) {
+    if (sig == SIGINT) {
+        printf("\nAbort Requested... (press enter)\n");
+        running = 0;
+    }
+    else
+    {
+        exit(sig);
+    }
 }

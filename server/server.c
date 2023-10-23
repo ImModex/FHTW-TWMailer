@@ -115,11 +115,7 @@ int main(int argc, char *argv[])
         // Accept clients trying to connect
         if ((new_socket = accept(base_sockfd, (struct sockaddr *)&cliaddress, &addrlen)) == -1)
         {
-            if (abort_requested) {
-                perror("accept error after aborted");
-            } else {
-                perror("accept error");
-            }
+            if (!abort_requested) perror("accept error");
             break;
         }
 
@@ -180,9 +176,14 @@ void signalHandler(int sig)
 
         if (base_sockfd != -1)
         {
+            // I think this is not needed since the base socket only accepts connections and
+            // assigns them a new sockfd, therefore this is a UDP protocol and does not
+            // need to be shut down?
+            /*
             if (shutdown(base_sockfd, SHUT_RDWR) == -1) {
                 perror("shutdown create_socket");
             }
+            */
             if (close(base_sockfd) == -1) {
                 perror("close create_socket");
             }

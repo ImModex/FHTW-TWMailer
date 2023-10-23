@@ -138,17 +138,26 @@ char* get_input(int lines, va_list *prompts) {
 
     int var_end = 0;
     int lines_read = 0;
-    char *buf, *message = (char*) malloc(sizeof(char));
+    char *buf, *message = (char*) malloc(sizeof(char)), *prompt, *prev = NULL;
     memset(message, 0, sizeof(char));
 
     do {
         if(prompts != NULL) {
-            char* prompt = va_arg(*prompts, char*);
+            prompt = prev == NULL ? va_arg(*prompts, char*) : prev;
             if(prompt == NULL) var_end = 1;
             if(!var_end) printf("%s", prompt);
             fflush(stdout);
         }
         buf = readline("");
+
+        if(lines == -1 && lines_read == 1 && strlen(buf) >= 80) {
+            printf("Subject is too long! \nPlease try again: ");
+            prev = prompt;
+            free(buf);
+            continue;
+        } else {
+            prev = NULL;
+        }
 
         if(lines == -1 && lines_read >= 2 && strcmp(buf, ".") == 0) {
             free(buf);

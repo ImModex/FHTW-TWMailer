@@ -20,6 +20,7 @@
 #include "../lib/tw_packet.h"
 #include "../lib/tw_utility.h"
 #include "../lib/queue.h"
+#include "../lib/ldap.h"
 
 #define MAIL_DIR "./inbox"
 #define MAX_CONNECTIONS 10
@@ -284,11 +285,14 @@ int grab_index(TW_PACKET *packet) {
 // Placeholder for LDAP login
 TW_PACKET login(char* username, char* password, session* session) {
     // TODO Handle ldap login
+    ldapConnection(username, password);
+    /*
     strcpy(session->username, username);
     session->logged_in = 1;
     
     // TODO REMOVE
     strcpy(password, "1");
+    */
 
     return make_TW_SERVER_PACKET(SERVER_OK, NULL);
 }

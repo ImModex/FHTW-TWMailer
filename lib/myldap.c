@@ -1,4 +1,4 @@
-#include "ldap.h"
+#include "myldap.h"
 
 int ldapConnection(char *username, char *password)
 {
@@ -10,47 +10,17 @@ int ldapConnection(char *username, char *password)
 
    // read username (bash: export ldapuser=<yourUsername>)
    char ldapBindUser[256];
-   char rawLdapUser[128];
+   char *rawLdapUser = username;
 
-   strcpy(rawLdapUser, username);
    sprintf(ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
    printf("user set to: %s\n", ldapBindUser);
 
-   const char *rawLdapUserEnv = getenv("ldapuser");
-   if (rawLdapUserEnv == NULL)
-   {
-      printf("(user not found... set to empty string)\n");
-      strcpy(ldapBindUser, "");
-   }
-   else
-   {
-      sprintf(ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", rawLdapUserEnv);
-      printf("user based on environment variable ldapuser set to: %s\n", ldapBindUser);
-   }
-
-
    // read password (bash: export ldappw=<yourPW>)
-   char ldapBindPassword[256];
-
-   strcpy(ldapBindPassword, password);
-   printf("pw taken over from commandline\n");
-
-   const char *ldapBindPasswordEnv = getenv("ldappw");
-   if (ldapBindPasswordEnv == NULL)
-   {
-      strcpy(ldapBindPassword, "");
-      printf("(pw not found... set to empty string)\n");
-   }
-   else
-   {
-      strcpy(ldapBindPassword, ldapBindPasswordEnv);
-      printf("pw taken over from environment variable ldappw\n");
-   }
-   
+   char *ldapBindPassword = password;
 
    // search settings
    const char *ldapSearchBaseDomainComponent = "dc=technikum-wien,dc=at";
-   const char *ldapSearchFilter = "(uid=if19b00*)";
+   const char *ldapSearchFilter = "(uid=if22b01*)";
    ber_int_t ldapSearchScope = LDAP_SCOPE_SUBTREE;
    const char *ldapSearchResultAttributes[] = {"uid", "cn", NULL};
 

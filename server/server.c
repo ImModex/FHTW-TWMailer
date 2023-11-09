@@ -281,18 +281,11 @@ int grab_index(TW_PACKET *packet) {
     return ret;
 }
 
-// "Handles" login
-// Placeholder for LDAP login
 TW_PACKET login(char* username, char* password, session* session) {
     // TODO Handle ldap login
-    ldapConnection(username, password);
-    /*
-    strcpy(session->username, username);
-    session->logged_in = 1;
-    
-    // TODO REMOVE
-    strcpy(password, "1");
-    */
+    if(ldapConnection(username, password) != 0){
+        return;
+    }
 
     return make_TW_SERVER_PACKET(SERVER_OK, NULL);
 }

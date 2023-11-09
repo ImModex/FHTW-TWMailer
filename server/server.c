@@ -20,7 +20,7 @@
 #include "../lib/tw_packet.h"
 #include "../lib/tw_utility.h"
 #include "../lib/queue.h"
-#include "../lib/ldap.h"
+#include "../lib/myldap.h"
 
 #define MAIL_DIR "./inbox"
 #define MAX_CONNECTIONS 10
@@ -47,7 +47,7 @@ void signalHandler(int sig);
 void* handle_client(void *conn);
 connection* get_connection_slot();
 
-TW_PACKET login(char* username, char* password, session* session);
+TW_PACKET login(char* username, char* password);
 TW_PACKET sv_send(session* session, char* content);
 TW_PACKET list(session* session);
 TW_PACKET sv_read(session* session, int index);
@@ -229,7 +229,7 @@ void* handle_client(void *connptr) {
             case READ: ans = sv_read(&session, grab_index(&pktBuf)); break;
             case LOGIN: {
                 char** split = split_data(pktBuf.data);
-                ans = login(split[1], split[2], &session);
+                ans = login(split[1], split[2]);
                 free_data(&split);
                 break;
             }
@@ -281,7 +281,7 @@ int grab_index(TW_PACKET *packet) {
     return ret;
 }
 
-TW_PACKET login(char* username, char* password, session* session) {
+TW_PACKET login(char* username, char* password) {
     // TODO Handle ldap login
     if(ldapConnection(username, password) != 0){
         return make_TW_SERVER_PACKET(SERVER_ERR, NULL);

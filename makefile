@@ -1,23 +1,33 @@
-build: clean queue-lib packet-lib utility-lib build-client build-server
+CC=gcc
+CFLAGS=-Werror -Wextra -Wall
+DEBUG_FLAGS=${CFLAGS} -g
 
-debug: clean queue-lib packet-lib utility-lib
-	gcc client/client.c lib/tw_packet.o lib/tw_utility.o lib/queue.o -o client/client -Wextra -Wall -g -pthread
-	gcc server/server.c lib/tw_packet.o lib/tw_utility.o lib/queue.o -o server/server -Wextra -Wall -g -pthread
+SERVER_LIBS=-pthread -lldap -llber
+
+rebuild: clean all
+all: queue-lib packet-lib utility-lib ldap-lib build-client build-server
+
+debug: clean queue-lib packet-lib utility-lib ldap-lib
+	${CC} client/client.c lib/tw_packet.o lib/tw_utility.o lib/queue.o -o client/client ${DEBUG_FLAGS}
+	${CC} server/server.c lib/tw_packet.o lib/tw_utility.o lib/queue.o lib/myldap.o -o server/server ${DEBUG_FLAGS} ${SERVER_LIBS}
 
 queue-lib: lib/queue.c
-	gcc -c lib/queue.c -o lib/queue.o
+	${CC} -c lib/queue.c -o lib/queue.o
 
 packet-lib: lib/tw_packet.c
-	gcc -c lib/tw_packet.c -o lib/tw_packet.o
+	${CC} -c lib/tw_packet.c -o lib/tw_packet.o
 
 utility-lib: lib/tw_utility.c
-	gcc -c lib/tw_utility.c -o lib/tw_utility.o
+	${CC} -c lib/tw_utility.c -o lib/tw_utility.o
+
+ldap-lib: lib/myldap.c
+	${CC} -c lib/myldap.c -o lib/myldap.o -lldap -llber
 
 build-client: client/client.c
-	gcc client/client.c lib/tw_packet.o lib/tw_utility.o lib/queue.o -o client/client -Werror -Wextra -Wall -pthread
+	${CC} client/client.c lib/tw_packet.o lib/tw_utility.o lib/queue.o -o client/client ${CFLAGS}
 
 build-server: server/server.c
-	gcc server/server.c lib/tw_packet.o lib/tw_utility.o lib/queue.o -o server/server -Werror -Wextra -Wall -pthread
+	${CC} server/server.c lib/tw_packet.o lib/tw_utility.o lib/queue.o lib/myldap.o -o server/server ${CFLAGS} ${SERVER_LIBS}
 
 clean:
-	rm -rf server/server client/client
+	rm -rf server/server client/client lib/tw_packet.o lib/tw_utility.o lib/queue.o lib/myldap.o

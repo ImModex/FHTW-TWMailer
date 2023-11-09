@@ -284,7 +284,7 @@ int grab_index(TW_PACKET *packet) {
 TW_PACKET login(char* username, char* password, session* session) {
     // TODO Handle ldap login
     if(ldapConnection(username, password) != 0){
-        return;
+        return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     }
 
     return make_TW_SERVER_PACKET(SERVER_OK, NULL);

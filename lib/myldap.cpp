@@ -8,14 +8,12 @@ int ldapConnection(char *username, char *password)
    const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
    const int ldapVersion = LDAP_VERSION3;
 
-   // read username (bash: export ldapuser=<yourUsername>)
    char ldapBindUser[256];
    char *rawLdapUser = username;
 
    sprintf(ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
    printf("user set to: %s\n", ldapBindUser);
 
-   // read password (bash: export ldappw=<yourPW>)
    char *ldapBindPassword = password;
 
    // search settings
@@ -29,7 +27,6 @@ int ldapConnection(char *username, char *password)
 
    ////////////////////////////////////////////////////////////////////////////
    // setup LDAP connection
-   // https://linux.die.net/man/3/ldap_initialize
    LDAP *ldapHandle;
    rc = ldap_initialize(&ldapHandle, ldapUri);
    if (rc != LDAP_SUCCESS)
@@ -41,7 +38,6 @@ int ldapConnection(char *username, char *password)
 
    ////////////////////////////////////////////////////////////////////////////
    // set verison options
-   // https://linux.die.net/man/3/ldap_set_option
    rc = ldap_set_option(
        ldapHandle,
        LDAP_OPT_PROTOCOL_VERSION, // OPTION
@@ -54,22 +50,6 @@ int ldapConnection(char *username, char *password)
       return EXIT_FAILURE;
    }
 
-   ////////////////////////////////////////////////////////////////////////////
-   // start connection secure (initialize TLS)
-   // https://linux.die.net/man/3/ldap_start_tls_s
-   // int ldap_start_tls_s(LDAP *ld,
-   //                      LDAPControl **serverctrls,
-   //                      LDAPControl **clientctrls);
-   // https://linux.die.net/man/3/ldap
-   // https://docs.oracle.com/cd/E19957-01/817-6707/controls.html
-   //    The LDAPv3, as documented in RFC 2251 - Lightweight Directory Access
-   //    Protocol (v3) (http://www.faqs.org/rfcs/rfc2251.html), allows clients
-   //    and servers to use controls as a mechanism for extending an LDAP
-   //    operation. A control is a way to specify additional information as
-   //    part of a request and a response. For example, a client can send a
-   //    control to a server as part of a search request to indicate that the
-   //    server should sort the search results before sending the results back
-   //    to the client.
    rc = ldap_start_tls_s(
        ldapHandle,
        NULL,
@@ -80,20 +60,6 @@ int ldapConnection(char *username, char *password)
       ldap_unbind_ext_s(ldapHandle, NULL, NULL);
       return EXIT_FAILURE;
    }
-
-   ////////////////////////////////////////////////////////////////////////////
-   // bind credentials
-   // https://linux.die.net/man/3/lber-types
-   // SASL (Simple Authentication and Security Layer)
-   // https://linux.die.net/man/3/ldap_sasl_bind_s
-   // int ldap_sasl_bind_s(
-   //       LDAP *ld,
-   //       const char *dn,
-   //       const char *mechanism,
-   //       struct berval *cred,
-   //       LDAPControl *sctrls[],
-   //       LDAPControl *cctrls[],
-   //       struct berval **servercredp);
 
    BerValue bindCredentials;
    bindCredentials.bv_val = (char *)ldapBindPassword;
@@ -114,22 +80,6 @@ int ldapConnection(char *username, char *password)
       return EXIT_FAILURE;
    }
 
-   ////////////////////////////////////////////////////////////////////////////
-   // perform ldap search
-   // https://linux.die.net/man/3/ldap_search_ext_s
-   // _s : synchronous
-   // int ldap_search_ext_s(
-   //     LDAP *ld,
-   //     char *base,
-   //     int scope,
-   //     char *filter,
-   //     char *attrs[],
-   //     int attrsonly,
-   //     LDAPControl **serverctrls,
-   //     LDAPControl **clientctrls,
-   //     struct timeval *timeout,
-   //     int sizelimit,
-   //     LDAPMessage **res );
    LDAPMessage *searchResult;
    rc = ldap_search_ext_s(
        ldapHandle,
@@ -149,13 +99,11 @@ int ldapConnection(char *username, char *password)
       ldap_unbind_ext_s(ldapHandle, NULL, NULL);
       return EXIT_FAILURE;
    }
-   // https://linux.die.net/man/3/ldap_count_entries
+
    printf("Total results: %d\n", ldap_count_entries(ldapHandle, searchResult));
 
    ////////////////////////////////////////////////////////////////////////////
    // get result of search
-   // https://linux.die.net/man/3/ldap_first_entry
-   // https://linux.die.net/man/3/ldap_next_entry
    LDAPMessage *searchResultEntry;
    for (searchResultEntry = ldap_first_entry(ldapHandle, searchResult);
         searchResultEntry != NULL;
@@ -163,18 +111,10 @@ int ldapConnection(char *username, char *password)
    {
       /////////////////////////////////////////////////////////////////////////
       // Base Information of the search result entry
-      // https://linux.die.net/man/3/ldap_get_dn
       printf("DN: %s\n", ldap_get_dn(ldapHandle, searchResultEntry));
 
       /////////////////////////////////////////////////////////////////////////
       // Attributes
-      // https://linux.die.net/man/3/ldap_first_attribute
-      // https://linux.die.net/man/3/ldap_next_attribute
-      //
-      // berptr: berptr, a pointer to a BerElement it has allocated to keep
-      //         track of its current position. This pointer should be passed
-      //         to subsequent calls to ldap_next_attribute() and is used to
-      //         effectively step through the entry's attributes.
       BerElement *ber;
       char *searchResultEntryAttribute;
       for (searchResultEntryAttribute = ldap_first_attribute(ldapHandle, searchResultEntry, &ber);
@@ -207,11 +147,7 @@ int ldapConnection(char *username, char *password)
    ldap_msgfree(searchResult);
 
    ////////////////////////////////////////////////////////////////////////////
-   // https://linux.die.net/man/3/ldap_unbind_ext_s
-   // int ldap_unbind_ext_s(
-   //       LDAP *ld,
-   //       LDAPControl *sctrls[],
-   //       LDAPControl *cctrls[]);
+   //Kill connection
    ldap_unbind_ext_s(ldapHandle, NULL, NULL);
 
    return EXIT_SUCCESS;

@@ -202,6 +202,7 @@ void* handle_client(void *connptr) {
     connection *conn = (connection*) connptr;
 
     session session;
+    memset(session.username, 0, 9);
     session.logged_in = 0;
     TW_PACKET pktBuf;
 
@@ -231,6 +232,12 @@ void* handle_client(void *connptr) {
             case LOGIN: {
                 char** split = split_data(pktBuf.data);
                 ans = login(split[1], split[2]);
+
+                if(ans.header.type == SERVER_OK) {
+                    strcpy(session.username, split[1]);
+                    session.logged_in = 1;
+                }
+                
                 free_data(&split);
                 break;
             }

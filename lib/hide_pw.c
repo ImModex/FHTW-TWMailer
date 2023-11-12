@@ -71,5 +71,6 @@ char* getpw(){
             }
         }
     }
+    printf("\n");
     return password;
 }

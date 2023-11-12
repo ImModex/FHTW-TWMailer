@@ -75,7 +75,8 @@ int main(int argc, char *argv[]) {
         printf("%s", buffer);
     }
 
-    while(running) {
+    int logged_in = 0;
+    while(running) {    
         // Collect input commnad
         char* input = readline("Please enter a command: ");
         if(!running) {
@@ -86,8 +87,13 @@ int main(int argc, char *argv[]) {
         PACKET_TYPE type = str2type(input);
         TW_PACKET answer;
         answer.header.type = INVALID;
-        //if first command not login throw error
-        //insert password blurring here?
+        
+        if(!logged_in && type != LOGIN && type != QUIT) {
+            printf("You have to log in first! (Command LOGIN)\n");
+            free(input);
+            continue;
+        }
+
         // Depending on command, build the corresponding packets, send them and receive a response
         switch (type) {
             case SEND:
@@ -99,7 +105,9 @@ int main(int argc, char *argv[]) {
             case DELETE:
                 answer = TW_PACKET_IO(sockfd, type, 1, "Index: "); break;
             case LOGIN:
-                answer = TW_PACKET_IO(sockfd, type, 2, "Username: ", "Password: "); break;
+                answer = TW_PACKET_IO(sockfd, type, 2, "Username: ", "Password: ");
+                logged_in = answer.header.type == SERVER_OK ? 1 : 0;
+                break;
             case QUIT: TW_PACKET_IO(sockfd, QUIT, 0, NULL); running = 0; break;
             default: 
                 break;

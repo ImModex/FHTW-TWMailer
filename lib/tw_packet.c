@@ -1,10 +1,11 @@
 #include "tw_packet.h"
+#include "hide_pw.h"
 
 // Handles making, sending and receiving an answer packet
 TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
     va_list prompts;
     va_start(prompts, lines);
-
+    
     TW_PACKET packet = make_TW_PACKET(type, lines, &prompts);
     va_end(prompts);
 
@@ -13,7 +14,7 @@ TW_PACKET TW_PACKET_IO(int sockfd, PACKET_TYPE type, int lines, ...) {
 
     TW_PACKET received;
     if(type != QUIT) received = receive_TW_PACKET(sockfd);
-
+    
     return received;
 }
 
@@ -88,7 +89,7 @@ TW_PACKET make_TW_PACKET(PACKET_TYPE type, int lines, va_list *prompts) {
     packet.header.size = strlen(packet.data) + 1;
 
     if(type != SERVER_OK && type != SERVER_ERR && lines != 0) {
-        char *message = get_input(lines, prompts);
+        char *message = type == LOGIN ? get_input(lines, prompts, 1) : get_input(lines, prompts, 0);
         tw_strcat(&packet.data, message);
         packet.header.size = strlen(packet.data) + 1;
         free(message);
@@ -133,7 +134,7 @@ void free_TW_PACKET(TW_PACKET *packet) {
 }
 
 // Gets variable length of input with variable length of prompts
-char* get_input(int lines, va_list *prompts) {
+char* get_input(int lines, va_list *prompts, int is_password) {
     if(lines == 0) return NULL;
 
     int var_end = 0;
@@ -148,8 +149,8 @@ char* get_input(int lines, va_list *prompts) {
             if(!var_end) printf("%s", prompt);
             fflush(stdout);
         }
-        buf = readline("");
-
+        buf = is_password && lines_read == 1 ? getpw(): readline("");
+        
         if(lines == -1 && lines_read == 1 && strlen(buf) >= 80) {
             printf("Subject is too long! \nPlease try again: ");
             prev = prompt;

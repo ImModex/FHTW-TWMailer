@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <termios.h>
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -85,7 +86,8 @@ int main(int argc, char *argv[]) {
         PACKET_TYPE type = str2type(input);
         TW_PACKET answer;
         answer.header.type = INVALID;
-
+        //if first command not login throw error
+        //insert password blurring here?
         // Depending on command, build the corresponding packets, send them and receive a response
         switch (type) {
             case SEND:

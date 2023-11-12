@@ -16,6 +16,7 @@
 #include <signal.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <termios.h>
 
 #include "../lib/tw_packet.h"
 #include "../lib/tw_utility.h"

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include "hide_pw.h"
 #include <stdarg.h>
 
 #include <sys/socket.h>
@@ -44,6 +44,6 @@ TW_PACKET make_TW_SERVER_PACKET(PACKET_TYPE type, char* payload);
 void print_TW_PACKET(TW_PACKET *packet);
 void print_TW_PACKET_INDEXED(TW_PACKET *packet);
 void free_TW_PACKET(TW_PACKET *packet);
-char* get_input(int lines, va_list *prompts);
+char* get_input(int lines, va_list *prompts, int is_password);
 const char* type2str(PACKET_TYPE type);
 PACKET_TYPE str2type(char* str);

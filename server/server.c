@@ -160,6 +160,9 @@ void init() {
 
 void signalHandler(int sig)
 {
+    //session.logged_in = 0;
+    TW_PACKET pktBuf;
+
     if (sig == SIGINT) {
         printf("Abort Requested...\n");
         abort_requested = 1;
@@ -201,6 +204,9 @@ void* handle_client(void *connptr) {
     // Client-owned connection object
     connection *conn = (connection*) connptr;
 
+    //client_ip = inet_ntoa(cliaddress.sin_addr);
+    
+    int login_attempts = 0;
     session session;
     memset(session.username, 0, 9);
     session.logged_in = 0;
@@ -236,6 +242,14 @@ void* handle_client(void *connptr) {
                 if(ans.header.type == SERVER_OK) {
                     strcpy(session.username, split[1]);
                     session.logged_in = 1;
+                }
+                else if(ans.header.type == SERVER_ERR){
+                    char *message = "Wrong username or password\0";
+                    send(conn->socketfd, message, sizeof(message), NULL);
+                    login_attempts++;
+                    if(login_attempts >= 3){
+                        //black list client ip
+                    }
                 }
                 
                 free_data(&split);

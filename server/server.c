@@ -17,20 +17,31 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <termios.h>
+#include <time.h>
 
 #include "../lib/tw_packet.h"
 #include "../lib/tw_utility.h"
 #include "../lib/queue.h"
 #include "../lib/myldap.h"
 
+// TODO Let user custom define this dir
 #define MAIL_DIR "./inbox"
 #define MAX_CONNECTIONS 10
 #define PORT 10101
 
+typedef struct login_attempt {
+    time_t timestamp;
+    unsigned int attempts;
+    char username[9];
+    char* address;
+} login_attempt;
+
 // Client connection with socketID and threadID
 typedef struct connection {
     int socketfd;
+    char* address;
     pthread_t thread_id;
+    queue_t* login_attempt_cache;
 } connection;
 
 // I don't think this is needed but holds login status and username
@@ -48,7 +59,7 @@ void signalHandler(int sig);
 void* handle_client(void *conn);
 connection* get_connection_slot();
 
-TW_PACKET login(char* username, char* password);
+TW_PACKET login(char* username, char* password, session* session);
 TW_PACKET sv_send(session* session, char* content);
 TW_PACKET list(session* session);
 TW_PACKET sv_read(session* session, int index);
@@ -108,6 +119,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    queue_t* login_attempt_cache = mkqueue(sizeof(login_attempt));
     while (!abort_requested)
     {
         int new_socket = -1;
@@ -134,6 +146,8 @@ int main(int argc, char *argv[])
 
         // Start a new thread for every connected client and handle requests
         new_connection->socketfd = new_socket;
+        new_connection->address = inet_ntoa(cliaddress.sin_addr);
+        new_connection->login_attempt_cache = login_attempt_cache;
         pthread_create(&new_connection->thread_id, NULL, handle_client, new_connection);
     }
 
@@ -144,6 +158,7 @@ int main(int argc, char *argv[])
         }
     }
 
+    queue_delete(&login_attempt_cache);
     return 0;
 }
 
@@ -160,9 +175,6 @@ void init() {
 
 void signalHandler(int sig)
 {
-    //session.logged_in = 0;
-    TW_PACKET pktBuf;
-
     if (sig == SIGINT) {
         printf("Abort Requested...\n");
         abort_requested = 1;
@@ -206,7 +218,6 @@ void* handle_client(void *connptr) {
 
     //client_ip = inet_ntoa(cliaddress.sin_addr);
     
-    int login_attempts = 0;
     session session;
     memset(session.username, 0, 9);
     session.logged_in = 0;
@@ -237,25 +248,30 @@ void* handle_client(void *connptr) {
             case READ: ans = sv_read(&session, grab_index(&pktBuf)); break;
             case LOGIN: {
                 char** split = split_data(pktBuf.data);
-                ans = login(split[1], split[2]);
-
-                if(ans.header.type == SERVER_OK) {
-                    strcpy(session.username, split[1]);
-                    session.logged_in = 1;
-                }
-                else if(ans.header.type == SERVER_ERR){
-                    char *message = "Wrong username or password\0";
-                    send(conn->socketfd, message, sizeof(message), NULL);
-                    login_attempts++;
-                    if(login_attempts >= 3){
-                        //black list client ip
-                    }
-                }
+                ans = login(split[1], split[2], &session);
                 
+                // make function login_attempt* create_login_attempt(timestamp, attempts, address, username)
+                login_attempt *attempt = malloc(sizeof(login_attempt));
+                attempt->timestamp = time(0);
+                attempt->attempts = 0;
+                attempt->address = conn->address;
+                strcpy(attempt->username, split[1]);
+
+                // TODO
+                // Need mutex or some other sort of sync for this operation since the cache is shared between threads
+                // Check if username OR ip is already in list
+                queue_add(conn->login_attempt_cache, attempt);
+
                 free_data(&split);
                 break;
             }
             default: break;
+        }
+
+        // DEBUG print login attempt list
+        for(int i = 0; i < conn->login_attempt_cache->length; i++) {
+            login_attempt *atpt = queue_get(conn->login_attempt_cache, i);
+            printf("%ld, %d, %s, %s\n", atpt->timestamp, atpt->attempts, atpt->address, atpt->username);
         }
 
         if(pktBuf.header.type == QUIT) {
@@ -303,11 +319,14 @@ int grab_index(TW_PACKET *packet) {
     return ret;
 }
 
-TW_PACKET login(char* username, char* password) {
+TW_PACKET login(char* username, char* password, session* session) {
     // TODO Handle ldap login
     if(ldapConnection(username, password) != 0){
         return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     }
+
+    strcpy(session->username, username);
+    session->logged_in = 1;
 
     return make_TW_SERVER_PACKET(SERVER_OK, NULL);
 }

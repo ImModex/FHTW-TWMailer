@@ -38,6 +38,19 @@ void* queue_pop(queue_t* queue) {
     return (queue->length <= 0) ? NULL : queue->queue[--queue->length];
 }
 
+// Removes and returns an element of the queue
+void* queue_remove(queue_t* queue, int index) {
+    void* elem = queue_get(queue, index);
+    if(elem == NULL) return NULL;
+
+    for(int i = index; i < queue->length-1; i++) {
+        queue[i] = queue[i + 1];
+    }
+
+    queue->length--;
+    return elem;
+}
+
 // Free memory that has been allocated by the queue
 void queue_delete(queue_t** queue) {
     while((*queue)->length > 0) free((*queue)->queue[--(*queue)->length]);

@@ -5,3 +5,4 @@
 *.o
 .vscode
 server/inbox*
+*.csv

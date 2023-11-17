@@ -32,14 +32,13 @@
 typedef struct login_attempt {
     time_t timestamp;
     unsigned int attempts;
-    char username[9];
-    char* address;
+    char address[16];
 } login_attempt;
 
 // Client connection with socketID and threadID
 typedef struct connection {
     int socketfd;
-    char* address;
+    char address[16];
     pthread_t thread_id;
     queue_t* login_attempt_cache;
 } connection;
@@ -66,6 +65,10 @@ TW_PACKET sv_read(session* session, int index);
 TW_PACKET del(session* session, int index);
 int grab_index(TW_PACKET *packet);
 queue_t* get_mail_list(session* session);
+
+login_attempt* create_login_attempt(time_t timestamp, int attempts, char* address);
+void save_login_attempts(const char* filename, queue_t* login_attempt_cache);
+queue_t* load_login_attempts(const char* filename);
 
 int main(int argc, char *argv[])
 {
@@ -146,7 +149,7 @@ int main(int argc, char *argv[])
 
         // Start a new thread for every connected client and handle requests
         new_connection->socketfd = new_socket;
-        new_connection->address = inet_ntoa(cliaddress.sin_addr);
+        strcpy(new_connection->address, inet_ntoa(cliaddress.sin_addr));
         new_connection->login_attempt_cache = login_attempt_cache;
         pthread_create(&new_connection->thread_id, NULL, handle_client, new_connection);
     }
@@ -250,17 +253,14 @@ void* handle_client(void *connptr) {
                 char** split = split_data(pktBuf.data);
                 ans = login(split[1], split[2], &session);
                 
-                // make function login_attempt* create_login_attempt(timestamp, attempts, address, username)
-                login_attempt *attempt = malloc(sizeof(login_attempt));
-                attempt->timestamp = time(0);
-                attempt->attempts = 0;
-                attempt->address = conn->address;
-                strcpy(attempt->username, split[1]);
+                login_attempt *attempt = create_login_attempt(time(0), 0, conn->address);
 
                 // TODO
                 // Need mutex or some other sort of sync for this operation since the cache is shared between threads
                 // Check if username OR ip is already in list
                 queue_add(conn->login_attempt_cache, attempt);
+
+                save_login_attempts("logins.csv", conn->login_attempt_cache);
 
                 free_data(&split);
                 break;
@@ -271,8 +271,16 @@ void* handle_client(void *connptr) {
         // DEBUG print login attempt list
         for(int i = 0; i < conn->login_attempt_cache->length; i++) {
             login_attempt *atpt = queue_get(conn->login_attempt_cache, i);
-            printf("%ld, %d, %s, %s\n", atpt->timestamp, atpt->attempts, atpt->address, atpt->username);
+            printf("%ld, %d, %s\n", atpt->timestamp, atpt->attempts, atpt->address);
         }
+
+        conn->login_attempt_cache = load_login_attempts("logins.csv");
+        //queue_remove(conn->login_attempt_cache, 0);
+
+        for(int i = 0; i < conn->login_attempt_cache->length; i++) {
+            login_attempt *atpt = queue_get(conn->login_attempt_cache, i);
+            printf("%ld, %d, %s\n", atpt->timestamp, atpt->attempts, atpt->address);
+        }    
 
         if(pktBuf.header.type == QUIT) {
             free_TW_PACKET(&pktBuf);
@@ -298,6 +306,71 @@ void* handle_client(void *connptr) {
     conn->thread_id = 0;
 
     return NULL;
+}
+
+login_attempt* create_login_attempt(time_t timestamp, int attempts, char* address) {
+    login_attempt *attempt = malloc(sizeof(login_attempt));
+
+    attempt->timestamp = timestamp;
+    attempt->attempts = attempts;
+    strcpy(attempt->address, address);
+
+    return attempt;
+}
+
+
+// timestamp,attempts,ip,username
+void save_login_attempts(const char* filename, queue_t* login_attempt_cache) {
+    FILE *file = fopen(filename, "w+");
+    if(file == NULL) return;
+
+for(int i = 0; i < login_attempt_cache->length; i++) {
+        login_attempt* attempt = queue_get(login_attempt_cache, i);
+        fprintf(file, "%ld,%d,%s\n", attempt->timestamp, attempt->attempts, attempt->address);
+    }
+
+    fclose(file);
+    return;
+}
+
+queue_t* load_login_attempts(const char* filename) {
+    FILE *file = fopen(filename, "r+");
+    if(file == NULL) return NULL;
+
+    queue_t* login_attempt_cache = mkqueue(sizeof(login_attempt));
+    
+    enum ParseState {
+        TIMESTAMP,
+        ATTEMPTS,
+        ADDRESS
+    };
+
+    enum ParseState state;
+    char* token;
+    char buf[100];
+    while (fgets(buf, 100, file)) {
+        login_attempt tmp;
+
+        state = TIMESTAMP;
+        token = strtok(buf, ",");
+        while(token) {
+
+            switch(state) {
+                case TIMESTAMP: tmp.timestamp = atol(token); break;
+                case ATTEMPTS: tmp.attempts = atoi(token); break;
+                case ADDRESS: strncpy(tmp.address, token, strlen(token)-1); break;
+                default: break; 
+            }
+
+            state++;
+            token = strtok(NULL, ",");
+        }
+
+        queue_add(login_attempt_cache, create_login_attempt(tmp.timestamp, tmp.attempts, tmp.address));
+    }
+    
+    fclose(file);
+    return login_attempt_cache;
 }
 
 // Returns the address of a free connection slot or NULL if there is none

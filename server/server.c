@@ -24,8 +24,8 @@
 #include "../lib/queue.h"
 #include "../lib/myldap.h"
 
-// TODO Let user custom define this dir
-#define MAIL_DIR "./inbox"
+char* MAIL_DIR = "./inbox";
+#define LOGIN_ATTEMPT_FILE "logins.csv"
 #define MAX_CONNECTIONS 10
 #define PORT 10101
 
@@ -66,6 +66,7 @@ TW_PACKET del(session* session, int index);
 int grab_index(TW_PACKET *packet);
 queue_t* get_mail_list(session* session);
 
+login_attempt* get_login_attempt(queue_t* login_attempt_cache, char* address);
 login_attempt* create_login_attempt(time_t timestamp, int attempts, char* address);
 void save_login_attempts(const char* filename, queue_t* login_attempt_cache);
 queue_t* load_login_attempts(const char* filename);
@@ -73,10 +74,12 @@ queue_t* load_login_attempts(const char* filename);
 int main(int argc, char *argv[])
 {
     // Check input
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <port> <spool-dir>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+
+    MAIL_DIR = argv[2];
 
     // Run initial tasks
     init();
@@ -122,11 +125,12 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    queue_t* login_attempt_cache = mkqueue(sizeof(login_attempt));
+    printf("Waiting for connections...\n");
+
+    queue_t* login_attempt_cache = load_login_attempts(LOGIN_ATTEMPT_FILE);
     while (!abort_requested)
     {
-        int new_socket = -1;
-        printf("Waiting for connections...\n");
+        int new_socket = -1;        
         addrlen = sizeof(struct sockaddr_in);
         
         // Accept clients trying to connect
@@ -136,20 +140,30 @@ int main(int argc, char *argv[])
             break;
         }
 
+        // Handle blacklisted IP
+        char* address = inet_ntoa(cliaddress.sin_addr);
+        login_attempt *attempt = get_login_attempt(login_attempt_cache, address);
+        if(attempt && attempt->attempts >= 3) {
+            printf("Blacklisted client %s tried to connect and was rejected.\n", address);
+            shutdown(new_socket, SHUT_RDWR);
+            close(new_socket);
+            continue;
+        }
+
         // Fetch a connection slot
         connection *new_connection = get_connection_slot();
 
         // If no slot is available, reject connection attempt
         if(new_connection == NULL) {
-            printf("Client %s:%d tried to connect but server is full...\n", inet_ntoa(cliaddress.sin_addr), ntohs(cliaddress.sin_port));
+            printf("Client %s:%d tried to connect but server is full...\n", address, ntohs(cliaddress.sin_port));
             continue;
             // Handle client rejection
         }
-        printf("Client connected from %s:%d...\n", inet_ntoa(cliaddress.sin_addr), ntohs(cliaddress.sin_port));
+        printf("Client connected from %s:%d...\n", address, ntohs(cliaddress.sin_port));
 
         // Start a new thread for every connected client and handle requests
         new_connection->socketfd = new_socket;
-        strcpy(new_connection->address, inet_ntoa(cliaddress.sin_addr));
+        strcpy(new_connection->address, address);
         new_connection->login_attempt_cache = login_attempt_cache;
         pthread_create(&new_connection->thread_id, NULL, handle_client, new_connection);
     }
@@ -219,7 +233,7 @@ void* handle_client(void *connptr) {
     // Client-owned connection object
     connection *conn = (connection*) connptr;
 
-    //client_ip = inet_ntoa(cliaddress.sin_addr);
+    int thread_abort_requested = 0;
     
     session session;
     memset(session.username, 0, 9);
@@ -253,34 +267,31 @@ void* handle_client(void *connptr) {
                 char** split = split_data(pktBuf.data);
                 ans = login(split[1], split[2], &session);
                 
-                login_attempt *attempt = create_login_attempt(time(0), 0, conn->address);
+                if(ans.header.type == SERVER_ERR) {
 
-                // TODO
-                // Need mutex or some other sort of sync for this operation since the cache is shared between threads
-                // Check if username OR ip is already in list
-                queue_add(conn->login_attempt_cache, attempt);
+                    login_attempt* attempt = get_login_attempt(conn->login_attempt_cache, conn->address);
+                    if(attempt == NULL) {
+                        attempt = create_login_attempt(time(0), 1, conn->address);
+                        // TODO
+                        // Need mutex or some other sort of sync for this operation since the cache is shared between threads
+                        queue_add(conn->login_attempt_cache, attempt);
+                    } else {
+                        attempt->attempts++;
+                        attempt->timestamp = time(0);
+                        
+                        if(attempt->attempts >= 3) {
+                            thread_abort_requested = 1;
+                        }
+                    }
 
-                save_login_attempts("logins.csv", conn->login_attempt_cache);
+                    save_login_attempts(LOGIN_ATTEMPT_FILE, conn->login_attempt_cache);
+                }
 
                 free_data(&split);
                 break;
             }
             default: break;
         }
-
-        // DEBUG print login attempt list
-        for(int i = 0; i < conn->login_attempt_cache->length; i++) {
-            login_attempt *atpt = queue_get(conn->login_attempt_cache, i);
-            printf("%ld, %d, %s\n", atpt->timestamp, atpt->attempts, atpt->address);
-        }
-
-        conn->login_attempt_cache = load_login_attempts("logins.csv");
-        //queue_remove(conn->login_attempt_cache, 0);
-
-        for(int i = 0; i < conn->login_attempt_cache->length; i++) {
-            login_attempt *atpt = queue_get(conn->login_attempt_cache, i);
-            printf("%ld, %d, %s\n", atpt->timestamp, atpt->attempts, atpt->address);
-        }    
 
         if(pktBuf.header.type == QUIT) {
             free_TW_PACKET(&pktBuf);
@@ -290,11 +301,15 @@ void* handle_client(void *connptr) {
         // Return ERR on invalid packet header
         if(ans.header.type == INVALID) ans = make_TW_SERVER_PACKET(SERVER_ERR, NULL);
         
+        if(thread_abort_requested) {
+            ans = make_TW_SERVER_PACKET(QUIT, "Maximum login attempts reached...");
+        }
+
         // Send response and free memory
         send_TW_PACKET(conn->socketfd, &ans);
         free_TW_PACKET(&ans);
         free_TW_PACKET(&pktBuf);
-    } while(!abort_requested);
+    } while(!abort_requested && !thread_abort_requested);
 
 
     // After client closed connection, free memory, do thread cleanup and reset connection slot
@@ -302,8 +317,29 @@ void* handle_client(void *connptr) {
     free_TW_PACKET(&pktBuf);
     pthread_exit(NULL);
 
+    shutdown(conn->socketfd, SHUT_RDWR);
+    close(conn->socketfd);
+
     conn->socketfd = -1;
     conn->thread_id = 0;
+
+    return NULL;
+}
+
+login_attempt* get_login_attempt(queue_t* login_attempt_cache, char* address) {
+    for(int i = 0; i < login_attempt_cache->length; i++) {
+        login_attempt *elem = (login_attempt*) queue_get(login_attempt_cache, i);
+        if(strcmp(elem->address, address) == 0) {
+            time_t now = time(0);
+
+            if(elem->timestamp + 60 <= now) {
+                elem->attempts = 0;
+                save_login_attempts(LOGIN_ATTEMPT_FILE, login_attempt_cache);
+            }
+
+            return elem;
+        }
+    }
 
     return NULL;
 }
@@ -324,7 +360,7 @@ void save_login_attempts(const char* filename, queue_t* login_attempt_cache) {
     FILE *file = fopen(filename, "w+");
     if(file == NULL) return;
 
-for(int i = 0; i < login_attempt_cache->length; i++) {
+    for(int i = 0; i < login_attempt_cache->length; i++) {
         login_attempt* attempt = queue_get(login_attempt_cache, i);
         fprintf(file, "%ld,%d,%s\n", attempt->timestamp, attempt->attempts, attempt->address);
     }
@@ -335,7 +371,12 @@ for(int i = 0; i < login_attempt_cache->length; i++) {
 
 queue_t* load_login_attempts(const char* filename) {
     FILE *file = fopen(filename, "r+");
-    if(file == NULL) return NULL;
+    if(file == NULL) {
+        file = fopen(filename, "w+");
+        fclose(file);
+        return mkqueue(sizeof(login_attempt));
+    }
+
 
     queue_t* login_attempt_cache = mkqueue(sizeof(login_attempt));
     
@@ -349,7 +390,9 @@ queue_t* load_login_attempts(const char* filename) {
     char* token;
     char buf[100];
     while (fgets(buf, 100, file)) {
-        login_attempt tmp;
+        login_attempt tmp = {
+            .address = {0}
+        };
 
         state = TIMESTAMP;
         token = strtok(buf, ",");
@@ -393,7 +436,6 @@ int grab_index(TW_PACKET *packet) {
 }
 
 TW_PACKET login(char* username, char* password, session* session) {
-    // TODO Handle ldap login
     if(ldapConnection(username, password) != 0){
         return make_TW_SERVER_PACKET(SERVER_ERR, NULL);
     }
@@ -429,7 +471,7 @@ TW_PACKET sv_send(session* session, char* content) {
     char filename[2048];
     sprintf(filename, "%s/%s", path, reformat_string(split[1]));
     FILE* file = fopen(filename, "w");
-    fputs(content, file);
+    fprintf(file, "%s\n%s", session->username, (content + strlen(split[0]) * sizeof(char) + 1));
     fclose(file);
 
     free_data(&split);

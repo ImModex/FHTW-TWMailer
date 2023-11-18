@@ -12,7 +12,7 @@ int ldapConnection(char *username, char *password)
    char *rawLdapUser = username;
 
    sprintf(ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
-   printf("user set to: %s\n", ldapBindUser);
+   //printf("user set to: %s\n", ldapBindUser);
 
    char *ldapBindPassword = password;
 
@@ -34,7 +34,7 @@ int ldapConnection(char *username, char *password)
       fprintf(stderr, "ldap_init failed\n");
       return EXIT_FAILURE;
    }
-   printf("connected to LDAP server %s\n", ldapUri);
+   //printf("connected to LDAP server %s\n", ldapUri);
 
    ////////////////////////////////////////////////////////////////////////////
    // set verison options
@@ -100,7 +100,7 @@ int ldapConnection(char *username, char *password)
       return EXIT_FAILURE;
    }
 
-   printf("Total results: %d\n", ldap_count_entries(ldapHandle, searchResult));
+  //printf("Total results: %d\n", ldap_count_entries(ldapHandle, searchResult));
 
    ////////////////////////////////////////////////////////////////////////////
    // get result of search
@@ -111,7 +111,7 @@ int ldapConnection(char *username, char *password)
    {
       /////////////////////////////////////////////////////////////////////////
       // Base Information of the search result entry
-      printf("DN: %s\n", ldap_get_dn(ldapHandle, searchResultEntry));
+      //printf("DN: %s\n", ldap_get_dn(ldapHandle, searchResultEntry));
 
       /////////////////////////////////////////////////////////////////////////
       // Attributes
@@ -126,7 +126,7 @@ int ldapConnection(char *username, char *password)
          {
             for (int i = 0; i < ldap_count_values_len(vals); i++)
             {
-               printf("\t%s: %s\n", searchResultEntryAttribute, vals[i]->bv_val);
+               //printf("\t%s: %s\n", searchResultEntryAttribute, vals[i]->bv_val);
             }
             ldap_value_free_len(vals);
          }
@@ -140,7 +140,7 @@ int ldapConnection(char *username, char *password)
          ber_free(ber, 0);
       }
 
-      printf("\n");
+      //printf("\n");
    }
 
    // free memory

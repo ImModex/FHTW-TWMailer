@@ -70,6 +70,7 @@ int main(int argc, char *argv[]) {
         perror("recv error");
     } else if (message_size == 0) {
         printf("Server closed remote socket\n"); 
+        running = 0;
     } else {
         buffer[message_size] = '\0';
         printf("%s", buffer);
@@ -117,7 +118,11 @@ int main(int argc, char *argv[]) {
         if(answer.header.type != INVALID) {
             if(type != LIST) print_TW_PACKET(&answer); 
             else print_TW_PACKET_INDEXED(&answer);
-        } 
+        }
+
+        if(answer.header.type == QUIT) {
+            running = 0;
+        }
 
         free(input);
         free_TW_PACKET(&answer);

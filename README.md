@@ -126,16 +126,16 @@ Handles LDAP Login for FHTW LDAP Server.
 ### 5.5 Hide Password Library (./lib/hide_pw.h)
 Display asteriks characters when the user types in their password to login.
 
-### 6. Server Client Architecture 
+## 6. Server Client Architecture 
 This project is a connection based, concurent, messaging programm.
 
-### 7. Development strategies and needed protocol adaptations
+## 7. Development strategies and needed protocol adaptations
 The development strategy used was feature based development, since there was a clear guideline to follow it was intuitive to work on implementing requirements in order. \
 Protocol adaptations were minimal, the ldapConnection method was changed to the string as input instead of an argument vector and the hide password functionality
 was changed to C from C++
 
-### 8. Used synchronization methods
+## 8. Used synchronization methods
 To synchronize the application a mutex was implemented to avoid simultanious writing to files by multiple users
 
-### 9. Handling of large messages 
+## 9. Handling of large messages 
 Messages are being split into chunks of data before being sent, this process is repeated until the bytes sent equals the packet data size

@@ -131,7 +131,7 @@ This project is a connection based, concurent, messaging programm.
 
 ### 7. Development strategies and needed protocol adaptations
 The development strategy used was feature based development, since there was a clear guideline to follow it was intuitive to work on implementing requirements in order. \
-Protocol adaptations were minimal, the ldapConnection method was changed to the string as input instead of an argument vector and the hide password functionality \
+Protocol adaptations were minimal, the ldapConnection method was changed to the string as input instead of an argument vector and the hide password functionality
 was changed to C from C++
 
 ### 8. Used synchronization methods

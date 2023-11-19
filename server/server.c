@@ -29,6 +29,7 @@ char* MAIL_DIR = "./inbox";
 #define LOGIN_ATTEMPT_FILE "logins.csv"
 #define MAX_CONNECTIONS 10
 
+// Login attempt with timestamp, how many previous attempts and IP address
 typedef struct login_attempt {
     time_t timestamp;
     unsigned int attempts;
@@ -92,6 +93,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    // Initialize mutex for thread synchronization
     if (pthread_mutex_init(&lock, NULL) != 0) { 
         perror("mutex init has failed\n"); 
         return EXIT_FAILURE; 
@@ -134,6 +136,7 @@ int main(int argc, char *argv[])
 
     printf("Waiting for connections...\n");
 
+    // Load login attempts from file and populate cache
     queue_t* login_attempt_cache = load_login_attempts(LOGIN_ATTEMPT_FILE);
     while (!abort_requested)
     {
@@ -265,6 +268,7 @@ void* handle_client(void *connptr) {
         // Receive data
         pktBuf = receive_TW_PACKET(conn->socketfd);
         
+        // Only allow one write operation to console at once
         pthread_mutex_lock(conn->lock);
         printf("Received %ld bytes from %d\n", pktBuf.header.size + sizeof(TW_PACKET_HEADER), conn->socketfd);
         pthread_mutex_unlock(conn->lock);
@@ -273,6 +277,7 @@ void* handle_client(void *connptr) {
         TW_PACKET ans;
         ans.header.type = INVALID;
 
+        // All command operations depend on files / shared data so it is synchronized by locking the mutex
         pthread_mutex_lock(conn->lock);
         switch(pktBuf.header.type) {
             case SEND: ans = sv_send(&session, pktBuf.data); break;
@@ -283,6 +288,8 @@ void* handle_client(void *connptr) {
                 char** split = split_data(pktBuf.data);
                 ans = login(split[1], split[2], &session);
                 
+                // If login fails, get login attempt and add one. If it is the first attempt, create one.
+                // When the maximum retry amount is exceeded (3), stop the thread and close the connection
                 if(ans.header.type == SERVER_ERR) {
 
                     login_attempt* attempt = get_login_attempt(conn->login_attempt_cache, conn->address);
@@ -341,6 +348,7 @@ void* handle_client(void *connptr) {
     return NULL;
 }
 
+// Gets a login attempt for a specified address from the cache, returns NULL if there is none
 login_attempt* get_login_attempt(queue_t* login_attempt_cache, char* address) {
     for(int i = 0; i < login_attempt_cache->length; i++) {
         login_attempt *elem = (login_attempt*) queue_get(login_attempt_cache, i);
@@ -359,6 +367,7 @@ login_attempt* get_login_attempt(queue_t* login_attempt_cache, char* address) {
     return NULL;
 }
 
+// Create new login attempt
 login_attempt* create_login_attempt(time_t timestamp, int attempts, char* address) {
     login_attempt *attempt = malloc(sizeof(login_attempt));
 
@@ -370,7 +379,8 @@ login_attempt* create_login_attempt(time_t timestamp, int attempts, char* addres
 }
 
 
-// timestamp,attempts,ip,username
+// CSV format -> timestamp,attempts,ip
+// Save login attempt cache to file
 void save_login_attempts(const char* filename, queue_t* login_attempt_cache) {
     FILE *file = fopen(filename, "w+");
     if(file == NULL) return;
@@ -384,6 +394,7 @@ void save_login_attempts(const char* filename, queue_t* login_attempt_cache) {
     return;
 }
 
+// Load login attempt cache from file
 queue_t* load_login_attempts(const char* filename) {
     FILE *file = fopen(filename, "r+");
     if(file == NULL) {
@@ -391,7 +402,6 @@ queue_t* load_login_attempts(const char* filename) {
         fclose(file);
         return mkqueue(sizeof(login_attempt));
     }
-
 
     queue_t* login_attempt_cache = mkqueue(sizeof(login_attempt));
     
@@ -404,15 +414,16 @@ queue_t* load_login_attempts(const char* filename) {
     enum ParseState state;
     char* token;
     char buf[100];
+
+    // Read file line-by-line
     while (fgets(buf, 100, file)) {
         login_attempt tmp = {
             .address = {0}
         };
 
         state = TIMESTAMP;
-        token = strtok(buf, ",");
+        token = strtok(buf, ","); // Split data on ','
         while(token) {
-
             switch(state) {
                 case TIMESTAMP: tmp.timestamp = atol(token); break;
                 case ATTEMPTS: tmp.attempts = atoi(token); break;
@@ -450,6 +461,7 @@ int grab_index(TW_PACKET *packet) {
     return ret;
 }
 
+// Handles ldap login
 TW_PACKET login(char* username, char* password, session* session) {
     if(ldapConnection(username, password) != 0){
         return make_TW_SERVER_PACKET(SERVER_ERR, NULL);

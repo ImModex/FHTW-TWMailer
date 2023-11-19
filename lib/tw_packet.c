@@ -25,9 +25,14 @@ void send_TW_PACKET(int sockfd, TW_PACKET *packet) {
         exit(1);
     }
 
-    if(write(sockfd, packet->data, packet->header.size) != packet->header.size) {
-        printf("Could not send message data to server!\n");
-        exit(1);
+    int data_sent = 0;
+    while(data_sent < packet->header.size) {
+        data_sent += write(sockfd, packet->data + data_sent, packet->header.size - data_sent);
+
+        if(data_sent == -1) {
+            printf("Could not send message data to server!\n");
+            exit(1);
+        }
     }
 }
 
@@ -117,9 +122,16 @@ void print_TW_PACKET_INDEXED(TW_PACKET *packet) {
 
     char** split = split_data(packet->data);
 
+    int len = 0;
+    while(split[len++] != NULL);
+
+    // OK / ERR
+    printf("%s\n", split[0]);
+    printf("%d\n", len-2);
+
     int i = 0;
     while(split[i] != NULL) {
-        if(!i) printf("%s\n", split[i]); else printf("%d: %s\n", i-1, split[i]);
+        if(i) printf("%d: %s\n", i-1, split[i]);
         ++i;
     }
 

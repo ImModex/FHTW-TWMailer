@@ -25,9 +25,9 @@
 #include "../lib/myldap.h"
 
 char* MAIL_DIR = "./inbox";
+
 #define LOGIN_ATTEMPT_FILE "logins.csv"
 #define MAX_CONNECTIONS 10
-#define PORT 10101
 
 typedef struct login_attempt {
     time_t timestamp;
@@ -41,6 +41,7 @@ typedef struct connection {
     char address[16];
     pthread_t thread_id;
     queue_t* login_attempt_cache;
+    pthread_mutex_t *lock;
 } connection;
 
 // I don't think this is needed but holds login status and username
@@ -79,6 +80,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    pthread_mutex_t lock;
     MAIL_DIR = argv[2];
 
     // Run initial tasks
@@ -88,6 +90,11 @@ int main(int argc, char *argv[])
     if (signal(SIGINT, signalHandler) == SIG_ERR) {
         perror("signal can not be registered");
         return EXIT_FAILURE;
+    }
+
+    if (pthread_mutex_init(&lock, NULL) != 0) { 
+        perror("mutex init has failed\n"); 
+        return EXIT_FAILURE; 
     }
 
     // Open socket, bind it to a port/ip and start listening
@@ -113,7 +120,7 @@ int main(int argc, char *argv[])
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    address.sin_port = htons(atoi(argv[1]));
 
     if (bind(base_sockfd, (struct sockaddr *)&address, sizeof(address)) == -1) {
         perror("bind error");
@@ -164,6 +171,7 @@ int main(int argc, char *argv[])
         // Start a new thread for every connected client and handle requests
         new_connection->socketfd = new_socket;
         strcpy(new_connection->address, address);
+        new_connection->lock = &lock;
         new_connection->login_attempt_cache = login_attempt_cache;
         pthread_create(&new_connection->thread_id, NULL, handle_client, new_connection);
     }
@@ -176,6 +184,7 @@ int main(int argc, char *argv[])
     }
 
     queue_delete(&login_attempt_cache);
+    pthread_mutex_destroy(&lock);
     return 0;
 }
 
@@ -235,9 +244,11 @@ void* handle_client(void *connptr) {
 
     int thread_abort_requested = 0;
     
-    session session;
-    memset(session.username, 0, 9);
-    session.logged_in = 0;
+    session session = {
+        .username = {0},
+        .logged_in = 0
+    };
+
     TW_PACKET pktBuf;
 
     // Send server-hello
@@ -253,11 +264,16 @@ void* handle_client(void *connptr) {
     do {
         // Receive data
         pktBuf = receive_TW_PACKET(conn->socketfd);
+        
+        pthread_mutex_lock(conn->lock);
         printf("Received %ld bytes from %d\n", pktBuf.header.size + sizeof(TW_PACKET_HEADER), conn->socketfd);
+        pthread_mutex_unlock(conn->lock);
 
         // Read packet header and call corresponding function to generate an answer
         TW_PACKET ans;
         ans.header.type = INVALID;
+
+        pthread_mutex_lock(conn->lock);
         switch(pktBuf.header.type) {
             case SEND: ans = sv_send(&session, pktBuf.data); break;
             case LIST: ans = list(&session); break;
@@ -272,8 +288,6 @@ void* handle_client(void *connptr) {
                     login_attempt* attempt = get_login_attempt(conn->login_attempt_cache, conn->address);
                     if(attempt == NULL) {
                         attempt = create_login_attempt(time(0), 1, conn->address);
-                        // TODO
-                        // Need mutex or some other sort of sync for this operation since the cache is shared between threads
                         queue_add(conn->login_attempt_cache, attempt);
                     } else {
                         attempt->attempts++;
@@ -292,6 +306,7 @@ void* handle_client(void *connptr) {
             }
             default: break;
         }
+        pthread_mutex_unlock(conn->lock);
 
         if(pktBuf.header.type == QUIT) {
             free_TW_PACKET(&pktBuf);

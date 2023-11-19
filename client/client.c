@@ -16,8 +16,6 @@
 
 #include "../lib/tw_packet.h"
 
-#define PORT 10101
-
 int running = 1;
 
 // CLIENT
@@ -52,12 +50,8 @@ int main(int argc, char *argv[]) {
 
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;       
-    address.sin_port = htons(PORT);
-    if (argc < 2) {
-        inet_aton("127.0.0.1", &address.sin_addr);
-    } else {
-        inet_aton(argv[1], &address.sin_addr);
-    }
+    address.sin_port = htons(atoi(argv[2]));
+    inet_aton(argv[1], &address.sin_addr);
 
     if (connect(sockfd, (struct sockaddr *)&address, sizeof(address)) == -1) {
         perror("Connect error - no server available");
@@ -86,8 +80,10 @@ int main(int argc, char *argv[]) {
         }
 
         PACKET_TYPE type = str2type(input);
-        TW_PACKET answer;
-        answer.header.type = INVALID;
+        TW_PACKET answer = {
+            .header.type = INVALID,
+            .header.size = 0
+        };
         
         if(!logged_in && type != LOGIN && type != QUIT) {
             printf("You have to log in first! (Command LOGIN)\n");
@@ -125,7 +121,7 @@ int main(int argc, char *argv[]) {
         }
 
         free(input);
-        free_TW_PACKET(&answer);
+        if(answer.header.size != 0) free_TW_PACKET(&answer);
     }
 
     // On shutdown, close socket
